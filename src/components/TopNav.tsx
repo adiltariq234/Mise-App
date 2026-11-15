@@ -25,8 +25,13 @@ export function TopNav({
             e.preventDefault();
             onSelectTab('recipes');
           }}
-          className="font-display text-xl sm:text-2xl font-semibold tracking-tight text-slate-900 whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-700"
+          className="flex items-center gap-2 font-display text-xl sm:text-2xl font-semibold tracking-tight text-slate-900 whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-700"
         >
+          <img
+            src="/mise-logo.png"
+            alt="Mise logo"
+            className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg object-cover"
+          />
           Mise
         </a>
 
