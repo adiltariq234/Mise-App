@@ -132,7 +132,7 @@ function sanitizeRecipes(rawRecipes: unknown[]): unknown[] {
 const SYSTEM_INSTRUCTION =
   'You are Mise, an expert culinary assistant. Accurately identify ingredients from fridge photos and craft realistic, appetizing recipes with reliable calorie estimates, prep times, and hands-free step-by-step instructions. Only use these exact dietaryTags values: Vegetarian, Vegan, Keto, Gluten-Free, Dairy-Free, High-Protein.';
 
-async function startServer() {
+export async function createApp() {
   const app = express();
   app.use(express.json({ limit: '15mb' }));
 
@@ -260,7 +260,9 @@ async function startServer() {
       appType: 'spa',
     });
     app.use(vite.middlewares);
-  } else {
+  } else if (process.env.VERCEL !== '1') {
+    // On Vercel, static files are served by Vercel itself; the serverless
+    // function (api/index.ts) only handles /api/* routes.
     const distPath = path.resolve(__dirname, 'dist');
     app.use(express.static(distPath));
     app.get('*', (_req, res) => {
@@ -268,9 +270,18 @@ async function startServer() {
     });
   }
 
+  return app;
+}
+
+async function startServer() {
+  const app = await createApp();
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Mise server listening on http://0.0.0.0:${PORT}`);
   });
 }
 
-startServer();
+// On Vercel the Express app runs as a serverless function (api/index.ts);
+// only auto-start a long-lived listener when running locally.
+if (process.env.VERCEL !== '1') {
+  startServer();
+}
