@@ -1,16 +1,16 @@
 import { useState } from 'react';
-import { Check, ChevronDown, ChevronUp, ChefHat, Plus } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, ChefHat, Heart, Plus } from 'lucide-react';
 import type { IngredientItem, Recipe, ShoppingListItem } from '../types/culinary';
 import {
   getIngredientCounts,
   isIngredientInShoppingList,
 } from '../utils/recipeLogic';
-import { FALLBACK_DISH_IMAGES } from '../data/seedData';
 
 interface RecipeCardProps {
   recipe: Recipe;
-  index: number;
   shoppingList: ShoppingListItem[];
+  isFavorite: boolean;
+  onToggleFavorite: (recipe: Recipe) => void;
   onAddMissingToShoppingList: (
     ingredient: IngredientItem,
     recipeTitle: string,
@@ -20,8 +20,9 @@ interface RecipeCardProps {
 
 export function RecipeCard({
   recipe,
-  index,
   shoppingList,
+  isFavorite,
+  onToggleFavorite,
   onAddMissingToShoppingList,
   onSelectRecipe,
 }: RecipeCardProps) {
@@ -30,13 +31,22 @@ export function RecipeCard({
 
   const totalTime = recipe.prepTimeMinutes + recipe.cookTimeMinutes;
   const { total, inFridgeCount, missingEssentials } = getIngredientCounts(recipe);
-  const imageSrc = recipe.imageUrl || FALLBACK_DISH_IMAGES[index];
+  // Honest imagery only: show a photo only when it genuinely depicts this
+  // dish. AI recipes have no imageUrl — they get a clean text-only header
+  // instead of a misleading stock photo (QA P0-4).
+  const imageSrc = recipe.imageUrl && !imgError ? recipe.imageUrl : null;
+  const notYetAdded = missingEssentials.filter(
+    (ing) => !isIngredientInShoppingList(ing.name, shoppingList),
+  );
+  const alreadyAdded = missingEssentials.filter((ing) =>
+    isIngredientInShoppingList(ing.name, shoppingList),
+  );
 
   return (
     <article className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white transition-transform duration-200 hover:-translate-y-0.5">
-      {/* 4:3 Dish Photography */}
-      <div className="relative aspect-[4/3] w-full overflow-hidden bg-slate-100">
-        {!imgError && imageSrc ? (
+      {/* 4:3 Dish Photography — only when the photo is real for this dish */}
+      {imageSrc ? (
+        <div className="relative aspect-[4/3] w-full overflow-hidden bg-slate-100">
           <img
             src={imageSrc}
             alt={recipe.title}
@@ -44,15 +54,44 @@ export function RecipeCard({
             onError={() => setImgError(true)}
             className="h-full w-full object-cover"
           />
-        ) : (
-          <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-slate-100 via-slate-50 to-emerald-50 p-6 text-center">
-            <ChefHat className="h-9 w-9 text-emerald-700/70" aria-hidden="true" />
-            <span className="mt-2 font-display text-base font-medium text-slate-700">
-              {recipe.title}
+          <button
+            type="button"
+            onClick={() => onToggleFavorite(recipe)}
+            aria-label={isFavorite ? `Remove ${recipe.title} from favourites` : `Save ${recipe.title} to favourites`}
+            aria-pressed={isFavorite}
+            className="absolute right-3 top-3 rounded-full bg-white/90 p-2 shadow-sm transition-colors hover:bg-white"
+          >
+            <Heart
+              className={`h-4 w-4 ${isFavorite ? 'fill-rose-500 text-rose-500' : 'text-slate-600'}`}
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+      ) : (
+        <div className="relative flex aspect-[4/3] w-full flex-col items-center justify-center bg-gradient-to-br from-slate-100 via-slate-50 to-emerald-50 p-6 text-center">
+          <ChefHat className="h-9 w-9 text-emerald-700/70" aria-hidden="true" />
+          <span className="mt-2 font-display text-base font-medium text-slate-700">
+            {recipe.title}
+          </span>
+          {recipe.isAiGenerated ? (
+            <span className="mt-1 text-xs text-slate-500">
+              AI-generated recipe — photo not available
             </span>
-          </div>
-        )}
-      </div>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => onToggleFavorite(recipe)}
+            aria-label={isFavorite ? `Remove ${recipe.title} from favourites` : `Save ${recipe.title} to favourites`}
+            aria-pressed={isFavorite}
+            className="absolute right-3 top-3 rounded-full bg-white/90 p-2 shadow-sm transition-colors hover:bg-white"
+          >
+            <Heart
+              className={`h-4 w-4 ${isFavorite ? 'fill-rose-500 text-rose-500' : 'text-slate-600'}`}
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+      )}
 
       {/* Card Body */}
       <div className="flex flex-1 flex-col p-5">
@@ -105,54 +144,40 @@ export function RecipeCard({
           </div>
 
           {/* Missing Essential Ingredients One-Click Add */}
-          {missingEssentials.length > 0 ? (
+          {notYetAdded.length > 0 ? (
             <div className="mt-2.5 space-y-1.5">
               <p className="text-xs font-medium text-amber-800">
-                Missing essential{missingEssentials.length > 1 ? 's' : ''}:
+                Missing essential{notYetAdded.length > 1 ? 's' : ''}:
               </p>
               <div className="flex flex-wrap gap-1.5">
-                {missingEssentials.map((ing) => {
-                  const alreadyAdded = isIngredientInShoppingList(
-                    ing.name,
-                    shoppingList,
-                  );
-                  return (
-                    <button
-                      key={ing.name}
-                      type="button"
-                      disabled={alreadyAdded}
-                      onClick={() =>
-                        onAddMissingToShoppingList(ing, recipe.title)
-                      }
-                      aria-label={
-                        alreadyAdded
-                          ? `${ing.name} already in shopping list`
-                          : `Add ${ing.name} to shopping list`
-                      }
-                      className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium whitespace-nowrap transition-colors ${
-                        alreadyAdded
-                          ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                          : 'border-amber-200 bg-amber-50 text-amber-900 hover:border-amber-300 hover:bg-amber-100'
-                      }`}
-                    >
-                      {alreadyAdded ? (
-                        <Check className="h-3.5 w-3.5" aria-hidden="true" />
-                      ) : (
-                        <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                      )}
-                      <span>
-                        {alreadyAdded ? `${ing.name} added` : `Add ${ing.name}`}
-                      </span>
-                    </button>
-                  );
-                })}
+                {notYetAdded.map((ing) => (
+                  <button
+                    key={ing.name}
+                    type="button"
+                    onClick={() =>
+                      onAddMissingToShoppingList(ing, recipe.title)
+                    }
+                    aria-label={`Add ${ing.name} to shopping list`}
+                    className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900 whitespace-nowrap transition-colors hover:border-amber-300 hover:bg-amber-100"
+                  >
+                    <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span>Add {ing.name}</span>
+                  </button>
+                ))}
               </div>
             </div>
-          ) : (
+          ) : missingEssentials.length === 0 ? (
             <p className="mt-2 text-xs font-medium text-emerald-700">
               All essential ingredients ready in fridge
             </p>
-          )}
+          ) : null}
+
+          {alreadyAdded.length > 0 ? (
+            <p className="mt-2 text-xs text-emerald-700">
+              In your shopping list:{' '}
+              {alreadyAdded.map((ing) => ing.name).join(', ')}
+            </p>
+          ) : null}
 
           {/* Expandable Full Ingredient Breakdown */}
           {showIngredients ? (

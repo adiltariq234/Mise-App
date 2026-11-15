@@ -65,6 +65,14 @@ export function CookingMode({
   const [autoRead, setAutoRead] = useState(false);
   const [speechRate, setSpeechRate] = useState<number>(1.0);
   const [completedMessage, setCompletedMessage] = useState(false);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [voiceURI, setVoiceURI] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('mise_tts_voice_v1');
+    } catch {
+      return null;
+    }
+  });
 
   const steps = recipe.steps.length > 0
     ? recipe.steps
@@ -77,6 +85,32 @@ export function CookingMode({
 
   const speechSupported =
     typeof window !== 'undefined' && 'speechSynthesis' in window;
+
+  // Load available voices (they arrive asynchronously in most browsers).
+  useEffect(() => {
+    if (!speechSupported) return;
+    const loadVoices = () => {
+      const list = window.speechSynthesis.getVoices();
+      if (list.length > 0) setVoices(list);
+    };
+    loadVoices();
+    window.speechSynthesis.addEventListener('voiceschanged', loadVoices);
+    return () => {
+      window.speechSynthesis.removeEventListener('voiceschanged', loadVoices);
+    };
+  }, [speechSupported]);
+
+  useEffect(() => {
+    try {
+      if (voiceURI) {
+        localStorage.setItem('mise_tts_voice_v1', voiceURI);
+      } else {
+        localStorage.removeItem('mise_tts_voice_v1');
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }, [voiceURI]);
 
   const stopSpeech = useCallback(() => {
     if (speechSupported) {
@@ -91,13 +125,15 @@ export function CookingMode({
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(textToSpeak);
       utterance.rate = rate;
+      const voice = voices.find((v) => v.voiceURI === voiceURI);
+      if (voice) utterance.voice = voice;
       utterance.onstart = () => setIsSpeaking(true);
       utterance.onend = () => setIsSpeaking(false);
       utterance.onerror = () => setIsSpeaking(false);
       window.speechSynthesis.speak(utterance);
       setIsSpeaking(true);
     },
-    [speechSupported],
+    [speechSupported, voices, voiceURI],
   );
 
   // Reset timer when changing steps
@@ -287,11 +323,31 @@ export function CookingMode({
                 <input
                   type="checkbox"
                   checked={autoRead}
+                  disabled={!speechSupported}
                   onChange={(e) => setAutoRead(e.target.checked)}
                   className="h-4 w-4 rounded border-slate-300 text-emerald-700 focus:ring-emerald-700"
                 />
                 <span>Auto-read next step</span>
               </label>
+
+              {speechSupported && voices.length > 0 ? (
+                <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
+                  <span className="text-xs text-slate-500">Voice</span>
+                  <select
+                    value={voiceURI || ''}
+                    onChange={(e) => setVoiceURI(e.target.value || null)}
+                    aria-label="Read-aloud voice"
+                    className="max-w-44 rounded-md border border-slate-300 bg-white px-1.5 py-1 text-sm focus:border-emerald-700 focus:outline-none"
+                  >
+                    <option value="">System default</option>
+                    {voices.map((v) => (
+                      <option key={v.voiceURI} value={v.voiceURI}>
+                        {v.name} ({v.lang})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
             </div>
 
             <div className="flex items-center gap-1.5">
@@ -314,6 +370,13 @@ export function CookingMode({
               ))}
             </div>
           </div>
+
+          {!speechSupported ? (
+            <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-900">
+              Read-aloud is not supported in this browser. Try Chrome, Edge,
+              or Safari on your phone to hear the steps read out.
+            </p>
+          ) : null}
 
           {/* Large Step Typography */}
           <div className="py-8 sm:py-10">
@@ -349,7 +412,12 @@ export function CookingMode({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setTimerRunning((r) => !r)}
+                    onClick={() => {
+                      if (!timerRunning && remainingSeconds === 0) {
+                        setRemainingSeconds(initialTimerSeconds);
+                      }
+                      setTimerRunning((r) => !r);
+                    }}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-medium text-white hover:bg-slate-800"
                   >
                     {timerRunning ? (
@@ -357,7 +425,14 @@ export function CookingMode({
                     ) : (
                       <Play className="h-4 w-4" aria-hidden="true" />
                     )}
-                    <span>{timerRunning ? 'Pause' : 'Start Timer'}</span>
+                    <span>
+                      {timerRunning
+                        ? 'Pause'
+                        : remainingSeconds > 0 &&
+                            remainingSeconds < initialTimerSeconds
+                          ? 'Resume'
+                          : 'Start Timer'}
+                    </span>
                   </button>
                   <button
                     type="button"

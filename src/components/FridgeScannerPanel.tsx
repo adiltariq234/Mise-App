@@ -1,14 +1,35 @@
 import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import { Camera, ImageUp, Loader2, Sparkles, X } from 'lucide-react';
 
+export type ScanStage =
+  | 'idle'
+  | 'preparing'
+  | 'uploading'
+  | 'analyzing'
+  | 'generating'
+  | 'polling';
+
+const STAGE_LABELS: Record<Exclude<ScanStage, 'idle'>, string> = {
+  preparing: 'Preparing your photo…',
+  uploading: 'Uploading photo…',
+  analyzing: 'Detecting ingredients…',
+  generating: 'Generating recipes…',
+  polling: 'AI is still working — checking for results…',
+};
+
 interface FridgeScannerPanelProps {
   previewImageUrl: string;
   summaryText: string;
   isAnalyzing: boolean;
+  scanStage: ScanStage;
+  scanElapsedSeconds: number;
   errorMessage: string | null;
+  isDemo: boolean;
   onDismissError: () => void;
   onAnalyzeFile: (file: File) => void;
   onAnalyzeDataUrl: (dataUrl: string, mimeType: string) => void;
+  onClearScan: () => void;
+  onShowLegal: (view: 'privacy' | 'terms') => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
 }
 
@@ -16,10 +37,15 @@ export function FridgeScannerPanel({
   previewImageUrl,
   summaryText,
   isAnalyzing,
+  scanStage,
+  scanElapsedSeconds,
   errorMessage,
+  isDemo,
   onDismissError,
   onAnalyzeFile,
   onAnalyzeDataUrl,
+  onClearScan,
+  onShowLegal,
   fileInputRef,
 }: FridgeScannerPanelProps) {
   const [isDragging, setIsDragging] = useState(false);
@@ -78,13 +104,17 @@ export function FridgeScannerPanel({
   const captureFromCamera = () => {
     const video = videoRef.current;
     if (!video) return;
+    const srcW = video.videoWidth || 1280;
+    const srcH = video.videoHeight || 960;
+    // Downscale the capture to a max of 1024 px so the upload stays small.
+    const scale = Math.min(1, 1024 / Math.max(srcW, srcH));
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 960;
+    canvas.width = Math.max(1, Math.round(srcW * scale));
+    canvas.height = Math.max(1, Math.round(srcH * scale));
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
     stopCamera();
     onAnalyzeDataUrl(dataUrl, 'image/jpeg');
   };
@@ -121,6 +151,8 @@ export function FridgeScannerPanel({
       setCameraError('Could not read the current fridge image for analysis.');
     }
   };
+
+  const elapsedLabel = `${Math.floor(scanElapsedSeconds / 60)}:${String(scanElapsedSeconds % 60).padStart(2, '0')}`;
 
   return (
     <section
@@ -172,6 +204,11 @@ export function FridgeScannerPanel({
               </p>
             </div>
           )}
+          {isDemo && !cameraOpen ? (
+            <span className="absolute left-3 top-3 rounded-md bg-slate-900/80 px-2.5 py-1 text-xs font-semibold text-white">
+              Sample fridge — not your scan
+            </span>
+          ) : null}
         </div>
 
         {/* Right: Upload & AI Analysis Controls */}
@@ -201,7 +238,7 @@ export function FridgeScannerPanel({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
             capture="environment"
             onChange={handleFileChange}
             className="sr-only"
@@ -242,7 +279,35 @@ export function FridgeScannerPanel({
               )}
               <span>{isAnalyzing ? 'Analyzing Fridge...' : 'Re-scan Current Photo'}</span>
             </button>
+
+            {!isDemo && !isAnalyzing ? (
+              <button
+                type="button"
+                onClick={onClearScan}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 whitespace-nowrap shrink-0"
+              >
+                <span>Clear scan &amp; restore sample</span>
+              </button>
+            ) : null}
           </div>
+
+          {/* Scan progress — staged feedback for the 60–120 s AI call */}
+          {isAnalyzing && scanStage !== 'idle' ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2.5"
+            >
+              <div className="flex items-center gap-2 text-sm font-medium text-emerald-900">
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                <span>{STAGE_LABELS[scanStage]}</span>
+                <span className="ml-auto font-mono text-xs tabular-nums">{elapsedLabel}</span>
+              </div>
+              <p className="mt-1 text-xs text-emerald-800">
+                AI analysis usually takes about a minute. Please keep this tab open.
+              </p>
+            </div>
+          ) : null}
 
           {errorMessage || cameraError ? (
             <div
@@ -263,6 +328,28 @@ export function FridgeScannerPanel({
               </button>
             </div>
           ) : null}
+
+          <p className="mt-4 text-xs leading-relaxed text-slate-500">
+            Your photo is sent to OpenRouter and its AI model provider to
+            detect ingredients. Photos are not stored on Mise&apos;s server.
+            JPG, PNG, and WebP supported (HEIC photos need to be exported as
+            JPG first).{' '}
+            <button
+              type="button"
+              onClick={() => onShowLegal('privacy')}
+              className="font-medium text-emerald-700 underline underline-offset-2 hover:text-emerald-800"
+            >
+              Privacy Policy
+            </button>
+            {' · '}
+            <button
+              type="button"
+              onClick={() => onShowLegal('terms')}
+              className="font-medium text-emerald-700 underline underline-offset-2 hover:text-emerald-800"
+            >
+              Terms
+            </button>
+          </p>
         </div>
       </div>
     </section>
