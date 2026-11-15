@@ -69,8 +69,12 @@ async function callOpenRouter(messages: ChatMessage[]): Promise<unknown> {
       model: MODEL_NAME,
       messages,
       response_format: { type: 'json_object' },
-      max_tokens: 4000,
+      max_tokens: 16000,
       temperature: 0.7,
+      // Nemotron reasons heavily and can burn the whole token budget on
+      // thinking, leaving nothing for the JSON output (empty/truncated
+      // replies seen live). Low effort keeps the reasoning short.
+      reasoning: { effort: 'low' },
     }),
   });
 
