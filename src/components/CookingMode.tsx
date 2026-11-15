@@ -347,6 +347,11 @@ export function CookingMode({
                     ))}
                   </select>
                 </label>
+              ) : speechSupported ? (
+                <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                  No voices installed in this browser — read-aloud uses the
+                  system default voice.
+                </span>
               ) : null}
             </div>
 
