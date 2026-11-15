@@ -9,8 +9,8 @@ import {
   isIngredientInShoppingList,
   mergeShoppingListItem,
   recalculateRecipeAvailability,
-} from './recipeLogic';
-import type { Recipe, ShoppingListItem } from '../types/culinary';
+} from './recipeLogic.ts';
+import type { Recipe, ShoppingListItem } from '../types/culinary.ts';
 
 const sampleRecipes: Recipe[] = [
   {
@@ -49,11 +49,19 @@ const sampleRecipes: Recipe[] = [
   },
 ];
 
-test('isIngredientInFridge matches substrings and ignores punctuation/case', () => {
+test('isIngredientInFridge matches whole words/tokens and ignores punctuation/case', () => {
   const fridge = ['Organic Eggs', 'Fresh Baby Spinach', 'Cherry Tomatoes'];
   assert.equal(isIngredientInFridge('eggs', fridge), true);
   assert.equal(isIngredientInFridge('Baby Spinach', fridge), true);
   assert.equal(isIngredientInFridge('Feta Cheese', fridge), false);
+});
+
+test('isIngredientInFridge does not false-positive on substrings', () => {
+  // "corn" must not match "popcorn" (old substring bug, QA audit 15 Nov).
+  assert.equal(isIngredientInFridge('corn', ['Popcorn']), false);
+  assert.equal(isIngredientInFridge('popcorn', ['Popcorn']), true);
+  assert.equal(isIngredientInFridge('milk', ['Almond Milk']), true);
+  assert.equal(isIngredientInFridge('cheese', ['Cheddar Cheese']), true);
 });
 
 test('recalculateRecipeAvailability updates inFridge dynamically when fridge contents change', () => {

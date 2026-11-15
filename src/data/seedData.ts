@@ -7,12 +7,9 @@ import dishLemonSalmonImg from '../assets/images/dish_lemon_salmon_1794677771509
 
 export const SAMPLE_FRIDGE_IMAGE = sampleFridgeImg;
 
-export const FALLBACK_DISH_IMAGES = [
-  dishHerbOmeletteImg,
-  dishKetoSkilletImg,
-  dishMediterraneanBowlImg,
-  dishLemonSalmonImg,
-];
+// NOTE: AI-generated recipes intentionally have NO fallback photo — showing
+// a stock image of a different dish was misleading (QA P0-4). Seed recipes
+// carry their own real imageUrl; AI recipes render a clean text-only card.
 
 export const INITIAL_FRIDGE_INGREDIENTS: string[] = [
   'Eggs',

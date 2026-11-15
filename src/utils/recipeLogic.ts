@@ -1,9 +1,11 @@
 import type {
   FilterState,
+  FridgeIngredient,
   IngredientItem,
   Recipe,
   ShoppingListItem,
 } from '../types/culinary';
+import { categorizeIngredient } from './categories.ts';
 
 export function normalizeIngredientName(name: string): string {
   return name
@@ -13,27 +15,53 @@ export function normalizeIngredientName(name: string): string {
     .trim();
 }
 
+/** The fridge can be stored as inventory objects or plain names. */
+export type FridgeInput = FridgeIngredient[] | string[];
+
+function fridgeNames(input: FridgeInput): string[] {
+  return input.map((i) => (typeof i === 'string' ? i : i.name));
+}
+
+/**
+ * Whole-word matching: the ingredient name matches when its tokens are
+ * a subset of a fridge item's tokens (or vice versa). This fixes the old
+ * substring false-positives — "corn" no longer matches "popcorn", "oil"
+ * no longer matches "olive oil" unless "olive oil" is the target itself.
+ * Plural handling: a trailing "s" is stripped from each token.
+ */
 export function isIngredientInFridge(
   ingredientName: string,
-  fridgeIngredients: string[],
+  fridgeIngredients: FridgeInput,
 ): boolean {
-  const target = normalizeIngredientName(ingredientName);
-  if (!target) return false;
+  const targetTokens = new Set(
+    normalizeIngredientName(ingredientName)
+      .split(' ')
+      .filter(Boolean)
+      .map((t) => t.replace(/s$/, '')),
+  );
+  if (targetTokens.size === 0) return false;
 
-  return fridgeIngredients.some((item) => {
-    const candidate = normalizeIngredientName(item);
-    if (!candidate) return false;
-    return (
-      candidate === target ||
-      target.includes(candidate) ||
-      candidate.includes(target)
+  return fridgeNames(fridgeIngredients).some((item) => {
+    const candidateTokens = new Set(
+      normalizeIngredientName(item)
+        .split(' ')
+        .filter(Boolean)
+        .map((t) => t.replace(/s$/, '')),
     );
+    if (candidateTokens.size === 0) return false;
+    const targetInCandidate = [...targetTokens].every((t) =>
+      candidateTokens.has(t),
+    );
+    const candidateInTarget = [...candidateTokens].every((t) =>
+      targetTokens.has(t),
+    );
+    return targetInCandidate || candidateInTarget;
   });
 }
 
 export function recalculateRecipeAvailability(
   recipes: Recipe[],
-  fridgeIngredients: string[],
+  fridgeIngredients: FridgeInput,
 ): Recipe[] {
   return recipes.map((recipe) => ({
     ...recipe,
@@ -131,6 +159,7 @@ export function createShoppingItemFromIngredient(
     id: `${normalizeIngredientName(ingredient.name)}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     name: ingredient.name.trim(),
     amount: ingredient.amount.trim() || '1 unit',
+    category: categorizeIngredient(ingredient.name),
     sourceRecipe: recipeTitle,
     checked: false,
     addedAt: Date.now(),
