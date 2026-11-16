@@ -156,8 +156,14 @@ async function setJob(jobId: string, record: JobRecord): Promise<void> {
 async function getJob(jobId: string): Promise<JobRecord | null> {
   const redis = getRedis();
   if (!redis) return null;
-  const raw = await redis.get<string>(`mise:job:${jobId}`);
+  // NOTE (2026-11-16): @upstash/redis auto-deserializes GET responses — a
+  // stored JSON string comes back as an OBJECT, not a string. The old code
+  // called JSON.parse() on that object, which threw, so every poll returned
+  // JOB_NOT_FOUND even though the job was stored fine (the 202 worked).
+  // Accept both shapes.
+  const raw = await redis.get<string | JobRecord>(`mise:job:${jobId}`);
   if (!raw) return null;
+  if (typeof raw === 'object') return raw as JobRecord;
   try {
     return JSON.parse(raw) as JobRecord;
   } catch {
