@@ -7,6 +7,14 @@
 }
 
 @layer base {
+  /* Safety net for horizontal overflow: `clip` (not `hidden`) so the sticky
+     header keeps working. The real fix is responsive layout; this only stops
+     any residual wide element from making the page scroll sideways on phones. */
+  html,
+  body {
+    overflow-x: clip;
+  }
+
   body {
     font-family: var(--font-sans);
     background-color: #f8fafc;

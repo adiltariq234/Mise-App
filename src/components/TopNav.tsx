@@ -35,10 +35,13 @@ export function TopNav({
           Mise
         </a>
 
-        {/* Zone 2: Single-Line Navigation Links */}
+        {/* Zone 2: Single-Line Navigation Links.
+            On phones the labels hide and only the icons show: with all three
+            zones shrink-0 + nowrap the full row measured ~440px wide and
+            overflowed a 390px viewport (the page scrolled sideways). */}
         <nav
           aria-label="Primary navigation"
-          className="flex items-center gap-3.5 text-xs sm:gap-6 sm:text-sm font-medium"
+          className="flex min-w-0 items-center gap-3.5 text-xs sm:gap-6 sm:text-sm font-medium"
         >
           <button
             type="button"
@@ -50,7 +53,7 @@ export function TopNav({
             }`}
           >
             <UtensilsCrossed className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden="true" />
-            <span>Recipes</span>
+            <span className="hidden sm:inline">Recipes</span>
           </button>
 
           <button
@@ -63,7 +66,7 @@ export function TopNav({
             }`}
           >
             <ShoppingBag className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden="true" />
-            <span>
+            <span className="hidden sm:inline">
               Shopping List
               {shoppingCount > 0 ? (
                 <span className="ml-1 font-mono text-xs text-emerald-700 tabular-nums">
