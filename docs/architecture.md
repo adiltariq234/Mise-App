@@ -25,6 +25,19 @@ All types live in `src/types/culinary.ts`.
 - `Recipe` — `isAiGenerated` distinguishes AI recipes from curated
   samples. `imageUrl` is set **only** when the photo genuinely depicts
   the dish; AI recipes have none and render a text-only card.
+  `nutrition?` (per-serving protein/carbs/fat/fiber/sodium) is shown only
+  when present — the app never invents macros. Ingredient amounts are
+  free text; `utils/amounts.ts` parses a leading quantity for the
+  servings scaler and leaves unquantified amounts unscaled (honest).
+- `FridgeProfile` — `{ id, name, ingredients, createdAt }`. Multiple
+  named fridges; the active one is tracked separately. Migrates from the
+  old single-list key on first run (see `utils/fridges.ts`).
+- `MealPlan` — `Partial<Record<WeekDay, { recipeId, servings }>>`: at most
+  one recipe per day, Monday-first. Helpers in `utils/mealPlan.ts`
+  (totals, missing-ingredient aggregation).
+- `SharePayload` — `{ v: 1, kind: 'mise-share', exportedAt, fridge?,
+  shoppingList?, mealPlan? }`, encoded as base64url JSON
+  (`utils/sharing.ts`). Local-only family sharing; no backend.
 - `ScanRecord` — `{ id, scannedAt, summary, ingredients, recipes,
   thumbnail? }`. This is the shape a future database-backed scan record
   will use; today it is stored in versioned localStorage.
@@ -37,7 +50,11 @@ envelopes and safe try/catch. Keys (see `STORAGE_KEYS`):
 
 | Key | Contents |
 |---|---|
-| `mise_fridge_v1` | Fridge inventory (`FridgeIngredient[]`) |
+| `mise_fridge_v1` | Legacy single fridge inventory (read once for migration, no longer written) |
+| `mise_fridges_v1` | Fridge profiles (`FridgeProfile[]`) |
+| `mise_active_fridge_v1` | Active fridge profile id |
+| `mise_meal_plan_v1` | Weekly meal plan (`MealPlan`) |
+| `mise_lang_v1` | UI language (`'en'` / `'ur'`) |
 | `mise_last_scan_v1` | Latest `ScanRecord` (with thumbnail) |
 | `mise_scan_history_v1` | Last 5 scans (no thumbnails) |
 | `mise_favorites_v1` | Favourite recipe ids |
@@ -86,26 +103,33 @@ open. When Redis is configured, the frontend polls `/api/jobs/:id`;
 when it is not, calls run synchronously with a 150 s client timeout
 and one server-side retry on empty/parse failures.
 
-## Phase 3 roadmap (architecture-ready, not yet built)
+## Phase 3 — built 16 November 2026
 
-| Feature | What is ready | What remains |
+All Phase 3 features are now built in the localStorage-based app (no
+backend). Honest limits are documented where they apply.
+
+| Feature | Status | Notes |
 |---|---|---|
-| Expiry tracking | `expiresAt` field, edit UI, "soon" badge, `expiringSoon()` helper | Digest/reminder UI, expiry sort |
-| Weekly meal planning | `ScanRecord` + recipe history give the data shape | Planner UI, day assignment, shopping aggregation |
-| Nutrition info | `Recipe.calories` exists; per-ingredient nutrition needs a data source | Nutrition API or database, per-serving macros |
-| Allergen info | `Recipe.ingredients` names are structured | Allergen taxonomy + flags on ingredients/recipes |
-| Serving-size adjustment | `Recipe.servings` exists | Structured amounts (currently free text like "3 large") — needs an amount parser before scaling is honest |
-| Recipe printing | — | Print stylesheet + `window.print()` action |
+| Expiry tracking | Done (Phase 1) + digest-ready | `expiresAt` field, edit UI, "soon" badge, `expiringSoon()` helper |
+| Weekly meal planning | **Built** | `MealPlanner` tab (Mon–Sun, one recipe/day + servings), weekly kcal total, missing essentials → shopping list (`utils/mealPlan.ts`) |
+| Nutrition info | **Built (data-limited)** | Per-serving + total calories from `Recipe.calories`; macros shown only when `Recipe.nutrition` is present — never invented. No per-ingredient nutrition source yet |
+| Allergen info | **Built (name-based)** | Keyword flags from ingredient names only (`utils/allergens.ts`); whole-word matching + plant-milk/flour exclusions; UI states the check is limited to listed ingredients |
+| Serving-size adjustment | **Built** | Amount parser + scaler (`utils/amounts.ts`); stepper on cards + cooking mode; unquantified amounts shown as written |
+| Recipe printing | **Built** | Print buttons (cooking mode, shopping list, meal planner) + `@media print` stylesheet in `index.css` |
 | Favourites | Done (Phase 1) | — |
-| Multiple fridges | `ScanRecord` per scan; inventory is a single list today | Fridge entity + switcher |
-| Family sharing | — | Accounts + shared lists (needs the account-model decision, P1-5) |
-| English + Urdu | — | i18n framework + Urdu strings |
-| PWA / offline | Shopping list already persists locally | Manifest, service worker, offline scan queue |
+| Multiple fridges | **Built** | `FridgeProfile` + switcher/rename/delete in the sidebar; migration from the legacy single-list key (`utils/fridges.ts`) |
+| Family sharing | **Built (local-only)** | Export/import via base64url share code or `#share=` link (`utils/sharing.ts`, `SharePanel`); a copy is imported, no live sync, no accounts — live multi-user sharing still needs a backend |
+| English + Urdu | **Built (main UI)** | `utils/i18n.ts` dictionary (key parity enforced by test); header toggle, persisted; recipe text, errors and legal pages stay in English |
+| PWA / offline | **Built (basics)** | `public/manifest.webmanifest` + `public/sw.js` (offline shell, stale-while-revalidate assets, API never cached); registered in `main.tsx` for production builds only |
 
 ## Testing
 
 - `npm test` — `node --test` (Node 24 type stripping). Unit tests for
-  `recipeLogic`, `categories`, `imageValidation`, `fridge`, `storage`;
+  `recipeLogic`, `categories`, `imageValidation`, `fridge`, `storage`,
+  `amounts` (parsing/scaling/fractions), `allergens` (flags + false
+  positives), `mealPlan` (set/clear/totals/missing), `fridges`
+  (profiles + migration fallback), `sharing` (encode/decode round-trip
+  + rejection of bad codes), `i18n` (EN/UR key parity + `fmt`);
   API tests in `server.test.ts` (validation, health, jobs 404,
   `sanitizeRecipes`, `validateImageInput`). No live AI calls in CI.
 - `npm run lint` — `tsc --noEmit`.
