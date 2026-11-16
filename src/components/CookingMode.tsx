@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -7,6 +7,7 @@ import {
   Pause,
   Play,
   Plus,
+  Printer,
   RotateCcw,
   Volume2,
   VolumeX,
@@ -16,6 +17,11 @@ import {
   formatTimerSeconds,
   isIngredientInShoppingList,
 } from '../utils/recipeLogic';
+import { scaleRecipe } from '../utils/amounts.ts';
+import { recipeAllergens } from '../utils/allergens.ts';
+import { ServingsScaler } from './ServingsScaler';
+import type { UiStrings } from '../utils/i18n.ts';
+import { getStrings } from '../utils/i18n.ts';
 
 interface CookingModeProps {
   recipe: Recipe;
@@ -25,6 +31,7 @@ interface CookingModeProps {
     recipeTitle: string,
   ) => void;
   onExit: () => void;
+  s?: UiStrings;
 }
 
 function playTimerChime() {
@@ -59,8 +66,14 @@ export function CookingMode({
   shoppingList,
   onAddMissingToShoppingList,
   onExit,
+  s = getStrings('en'),
 }: CookingModeProps) {
   const [stepIndex, setStepIndex] = useState(0);
+  const [servings, setServings] = useState(recipe.servings);
+  // Amounts scale with the chosen servings; unscalable amounts are shown
+  // as written (see utils/amounts.ts).
+  const scaled = useMemo(() => scaleRecipe(recipe, servings), [recipe, servings]);
+  const allergens = useMemo(() => recipeAllergens(recipe), [recipe]);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [autoRead, setAutoRead] = useState(false);
   const [speechRate, setSpeechRate] = useState<number>(1.0);
@@ -245,21 +258,31 @@ export function CookingMode({
     <div className="mx-auto max-w-[1200px] px-4 py-6 sm:px-6 lg:px-8">
       {/* Top Bar */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 pb-4">
-        <button
-          type="button"
-          onClick={() => {
-            stopSpeech();
-            onExit();
-          }}
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50"
-        >
-          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-          <span>Back to Recipes</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              stopSpeech();
+              onExit();
+            }}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            <span>{s.backToRecipes}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50"
+          >
+            <Printer className="h-4 w-4" aria-hidden="true" />
+            <span>{s.print}</span>
+          </button>
+        </div>
 
         <div className="text-center">
           <p className="text-xs font-medium text-slate-500">
-            Hands-Free Cooking Mode
+            {s.cookingMode}
           </p>
           <h1 className="font-display text-lg font-semibold text-slate-900 sm:text-xl">
             {recipe.title}
@@ -267,7 +290,7 @@ export function CookingMode({
         </div>
 
         <div className="font-mono text-sm font-medium text-slate-700 tabular-nums">
-          Step {stepIndex + 1} of {steps.length}
+          {s.step} {stepIndex + 1} of {steps.length}
         </div>
       </div>
 
@@ -316,7 +339,7 @@ export function CookingMode({
                 ) : (
                   <Volume2 className="h-4 w-4" aria-hidden="true" />
                 )}
-                <span>{isSpeaking ? 'Stop Reading' : 'Read Step Aloud'}</span>
+                <span>{isSpeaking ? s.stopReading : s.readAloud}</span>
               </button>
 
               <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
@@ -327,19 +350,19 @@ export function CookingMode({
                   onChange={(e) => setAutoRead(e.target.checked)}
                   className="h-4 w-4 rounded border-slate-300 text-emerald-700 focus:ring-emerald-700"
                 />
-                <span>Auto-read next step</span>
+                <span>{s.autoReadNext}</span>
               </label>
 
               {speechSupported && voices.length > 0 ? (
                 <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
-                  <span className="text-xs text-slate-500">Voice</span>
+                  <span className="text-xs text-slate-500">{s.voice}</span>
                   <select
                     value={voiceURI || ''}
                     onChange={(e) => setVoiceURI(e.target.value || null)}
                     aria-label="Read-aloud voice"
                     className="max-w-44 rounded-md border border-slate-300 bg-white px-1.5 py-1 text-sm focus:border-emerald-700 focus:outline-none"
                   >
-                    <option value="">System default</option>
+                    <option value="">{s.systemDefault}</option>
                     {voices.map((v) => (
                       <option key={v.voiceURI} value={v.voiceURI}>
                         {v.name} ({v.lang})
@@ -357,7 +380,7 @@ export function CookingMode({
 
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-medium text-slate-500 mr-1">
-                Voice speed
+                {s.voiceSpeed}
               </span>
               {[0.9, 1.0, 1.15].map((rate) => (
                 <button
@@ -386,7 +409,7 @@ export function CookingMode({
           {/* Large Step Typography */}
           <div className="py-8 sm:py-10">
             <p className="font-mono text-sm font-medium text-emerald-800 tabular-nums">
-              Step {currentStep.stepNumber}
+              {s.step} {currentStep.stepNumber}
             </p>
             <p className="mt-3 font-display text-2xl font-medium leading-snug text-slate-900 sm:text-3xl lg:text-4xl">
               {currentStep.instruction}
@@ -394,7 +417,7 @@ export function CookingMode({
 
             {currentStep.tip ? (
               <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4 text-base text-slate-700">
-                <span className="font-semibold text-slate-900">Chef tip: </span>
+                <span className="font-semibold text-slate-900">{s.chefTip}: </span>
                 {currentStep.tip}
               </div>
             ) : null}
@@ -458,7 +481,7 @@ export function CookingMode({
             {completedMessage ? (
               <div className="mt-6 flex items-center justify-between gap-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900">
                 <div>
-                  <p className="font-semibold">Dish complete — enjoy your meal!</p>
+                  <p className="font-semibold">{s.dishComplete}</p>
                   <p className="text-sm text-emerald-800">
                     You finished all {steps.length} steps for {recipe.title}.
                   </p>
@@ -468,7 +491,7 @@ export function CookingMode({
                   onClick={onExit}
                   className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 whitespace-nowrap"
                 >
-                  Done Cooking
+                  {s.doneCooking}
                 </button>
               </div>
             ) : null}
@@ -483,8 +506,8 @@ export function CookingMode({
               className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 sm:px-5 sm:py-3.5 text-sm sm:text-base font-semibold text-slate-800 whitespace-nowrap shrink-0 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
-              <span className="sm:hidden">Previous</span>
-              <span className="hidden sm:inline">Previous Step</span>
+              <span className="sm:hidden">{s.previousStep}</span>
+              <span className="hidden sm:inline">{s.previousStep}</span>
             </button>
 
             <button
@@ -493,10 +516,10 @@ export function CookingMode({
               className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-5 py-3 sm:px-6 sm:py-3.5 text-sm sm:text-base font-semibold text-white whitespace-nowrap shrink-0 transition-colors hover:bg-emerald-800"
             >
               <span className="sm:hidden">
-                {stepIndex === steps.length - 1 ? 'Finish' : 'Next Step'}
+                {stepIndex === steps.length - 1 ? s.finishRecipe : s.nextStep}
               </span>
               <span className="hidden sm:inline">
-                {stepIndex === steps.length - 1 ? 'Finish Recipe' : 'Next Step'}
+                {stepIndex === steps.length - 1 ? s.finishRecipe : s.nextStep}
               </span>
               <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden="true" />
             </button>
@@ -510,14 +533,28 @@ export function CookingMode({
         {/* Right: Step Overview & Ingredients Needed */}
         <aside className="lg:col-span-4 space-y-6">
           <section className="rounded-xl border border-slate-200 bg-white p-5">
-            <h2 className="text-base font-semibold text-slate-900">
-              Ingredients Checklist
-            </h2>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-base font-semibold text-slate-900">
+                {s.ingredientsChecklist}
+              </h2>
+              <ServingsScaler
+                servings={servings}
+                baseServings={recipe.servings}
+                onChange={setServings}
+                s={s}
+              />
+            </div>
             <p className="mt-1 text-xs text-slate-500 tabular-nums">
-              {recipe.servings} {recipe.servings === 1 ? 'serving' : 'servings'} · {recipe.calories} kcal per serving
+              {servings} {servings === 1 ? s.serving : s.servings} · {recipe.calories} {s.caloriesPerServing}
+              {servings !== recipe.servings
+                ? ` · ${scaled.totalCalories} kcal ${s.totalCalories}`
+                : ''}
             </p>
+            {scaled.unscaledCount > 0 ? (
+              <p className="mt-2 text-xs text-slate-500">{s.notScalableNote}</p>
+            ) : null}
             <ul className="mt-4 space-y-2.5">
-              {recipe.ingredients.map((ing) => {
+              {scaled.ingredients.map((ing) => {
                 const inList = isIngredientInShoppingList(
                   ing.name,
                   shoppingList,
@@ -529,18 +566,21 @@ export function CookingMode({
                   >
                     <div>
                       <p className="font-medium text-slate-900">{ing.name}</p>
-                      <p className="text-xs text-slate-500">{ing.amount}</p>
+                      <p className="text-xs text-slate-500">{ing.scaledAmount}</p>
                     </div>
                     {ing.inFridge ? (
                       <span className="text-xs font-medium text-emerald-700 shrink-0">
-                        In fridge
+                        {s.inFridge}
                       </span>
                     ) : (
                       <button
                         type="button"
                         disabled={inList}
                         onClick={() =>
-                          onAddMissingToShoppingList(ing, recipe.title)
+                          onAddMissingToShoppingList(
+                            { ...ing, amount: ing.scaledAmount },
+                            recipe.title,
+                          )
                         }
                         className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium whitespace-nowrap shrink-0 transition-colors ${
                           inList
@@ -553,7 +593,7 @@ export function CookingMode({
                         ) : (
                           <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                         )}
-                        <span>{inList ? 'In list' : 'Add to list'}</span>
+                        <span>{inList ? s.inList : s.addToList}</span>
                       </button>
                     )}
                   </li>
@@ -562,8 +602,44 @@ export function CookingMode({
             </ul>
           </section>
 
+          {/* Nutrition & allergens — from recipe data and ingredient names
+              only; macros are shown only when the recipe carries them. */}
           <section className="rounded-xl border border-slate-200 bg-white p-5">
-            <h2 className="text-base font-semibold text-slate-900">All Steps</h2>
+            <h2 className="text-base font-semibold text-slate-900">{s.nutrition}</h2>
+            <p className="mt-1 text-sm text-slate-700 tabular-nums">
+              {recipe.calories} {s.caloriesPerServing}
+              {servings !== recipe.servings
+                ? ` · ${scaled.totalCalories} kcal ${s.totalCalories}`
+                : ''}
+            </p>
+            {recipe.nutrition ? (
+              <p className="mt-1 text-sm text-slate-700 tabular-nums">
+                {recipe.nutrition.proteinGrams !== undefined
+                  ? `Protein ${recipe.nutrition.proteinGrams} g · `
+                  : ''}
+                {recipe.nutrition.carbsGrams !== undefined
+                  ? `Carbs ${recipe.nutrition.carbsGrams} g · `
+                  : ''}
+                {recipe.nutrition.fatGrams !== undefined
+                  ? `Fat ${recipe.nutrition.fatGrams} g`
+                  : ''}
+              </p>
+            ) : (
+              <p className="mt-1 text-sm text-slate-500">{s.macrosNotProvided}</p>
+            )}
+            {allergens.length > 0 ? (
+              <p className="mt-3 text-sm">
+                <span className="font-medium text-amber-800">{s.contains}: </span>
+                <span className="text-amber-900">{allergens.join(', ')}</span>
+              </p>
+            ) : (
+              <p className="mt-3 text-sm text-slate-600">{s.noAllergensDetected}.</p>
+            )}
+            <p className="mt-1 text-xs text-slate-500">{s.allergenNote}</p>
+          </section>
+
+          <section className="rounded-xl border border-slate-200 bg-white p-5">
+            <h2 className="text-base font-semibold text-slate-900">{s.allSteps}</h2>
             <ol className="mt-3 space-y-2">
               {steps.map((step, idx) => {
                 const active = idx === stepIndex;
@@ -579,7 +655,7 @@ export function CookingMode({
                       }`}
                     >
                       <span className="font-mono text-xs font-semibold text-emerald-800 tabular-nums">
-                        Step {step.stepNumber}
+                        {s.step} {step.stepNumber}
                       </span>
                       <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed">
                         {step.instruction}

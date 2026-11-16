@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import { Camera, ImageUp, Loader2, Sparkles, X } from 'lucide-react';
+import type { UiStrings } from '../utils/i18n.ts';
+import { getStrings } from '../utils/i18n.ts';
 
 export type ScanStage =
   | 'idle'
@@ -9,13 +11,20 @@ export type ScanStage =
   | 'generating'
   | 'polling';
 
-const STAGE_LABELS: Record<Exclude<ScanStage, 'idle'>, string> = {
-  preparing: 'Preparing your photo…',
-  uploading: 'Uploading photo…',
-  analyzing: 'Detecting ingredients…',
-  generating: 'Generating recipes…',
-  polling: 'AI is still working — checking for results…',
-};
+function stageLabel(s: UiStrings, stage: Exclude<ScanStage, 'idle'>): string {
+  switch (stage) {
+    case 'preparing':
+      return s.stagePreparing;
+    case 'uploading':
+      return s.stageUploading;
+    case 'analyzing':
+      return s.stageAnalyzing;
+    case 'generating':
+      return s.stageGenerating;
+    case 'polling':
+      return s.stagePolling;
+  }
+}
 
 interface FridgeScannerPanelProps {
   previewImageUrl: string;
@@ -31,6 +40,7 @@ interface FridgeScannerPanelProps {
   onClearScan: () => void;
   onShowLegal: (view: 'privacy' | 'terms') => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
+  s?: UiStrings;
 }
 
 export function FridgeScannerPanel({
@@ -47,6 +57,7 @@ export function FridgeScannerPanel({
   onClearScan,
   onShowLegal,
   fileInputRef,
+  s = getStrings('en'),
 }: FridgeScannerPanelProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -177,14 +188,14 @@ export function FridgeScannerPanel({
                   className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
                 >
                   <Camera className="h-4 w-4" aria-hidden="true" />
-                  <span>Capture & Analyze</span>
+                  <span>{s.captureAnalyze}</span>
                 </button>
                 <button
                   type="button"
                   onClick={stopCamera}
                   className="rounded-lg bg-white/90 px-3 py-2 text-sm font-medium text-slate-900 hover:bg-white"
                 >
-                  Cancel
+                  {s.cancel}
                 </button>
               </div>
             </div>
@@ -200,13 +211,13 @@ export function FridgeScannerPanel({
             <div className="flex h-full min-h-[220px] flex-col items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 p-6 text-center">
               <Camera className="h-8 w-8 text-slate-400" aria-hidden="true" />
               <p className="mt-2 text-sm font-medium text-slate-600">
-                Fridge preview ready
+                {s.fridgePreviewReady}
               </p>
             </div>
           )}
           {isDemo && !cameraOpen ? (
             <span className="absolute left-3 top-3 rounded-md bg-slate-900/80 px-2.5 py-1 text-xs font-semibold text-white">
-              Sample fridge — not your scan
+              {s.sampleFridge}
             </span>
           ) : null}
         </div>
@@ -225,10 +236,10 @@ export function FridgeScannerPanel({
         >
           <div>
             <p className="text-xs font-medium tracking-wide text-emerald-800">
-              Visual Ingredient Recognition
+              {s.scannerKicker}
             </p>
             <h1 className="mt-1.5 font-display text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl text-balance">
-              Snap your open fridge, cook what you have
+              {s.scannerTitle}
             </h1>
             <p className="mt-2 text-sm leading-relaxed text-slate-600 max-w-xl">
               {summaryText}
@@ -253,7 +264,7 @@ export function FridgeScannerPanel({
               className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 disabled:opacity-60 whitespace-nowrap shrink-0"
             >
               <ImageUp className="h-4 w-4" aria-hidden="true" />
-              <span>Upload Fridge Photo</span>
+              <span>{s.uploadPhoto}</span>
             </button>
 
             <button
@@ -263,7 +274,7 @@ export function FridgeScannerPanel({
               className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50 disabled:opacity-60 whitespace-nowrap shrink-0"
             >
               <Camera className="h-4 w-4 text-slate-600" aria-hidden="true" />
-              <span>Use Camera</span>
+              <span>{s.useCamera}</span>
             </button>
 
             <button
@@ -277,7 +288,7 @@ export function FridgeScannerPanel({
               ) : (
                 <Sparkles className="h-4 w-4 text-emerald-700" aria-hidden="true" />
               )}
-              <span>{isAnalyzing ? 'Analyzing Fridge...' : 'Re-scan Current Photo'}</span>
+              <span>{isAnalyzing ? s.analyzingFridge : s.rescanPhoto}</span>
             </button>
 
             {!isDemo && !isAnalyzing ? (
@@ -286,7 +297,7 @@ export function FridgeScannerPanel({
                 onClick={onClearScan}
                 className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 whitespace-nowrap shrink-0"
               >
-                <span>Clear scan &amp; restore sample</span>
+                <span>{s.clearScan}</span>
               </button>
             ) : null}
           </div>
@@ -300,11 +311,11 @@ export function FridgeScannerPanel({
             >
               <div className="flex items-center gap-2 text-sm font-medium text-emerald-900">
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                <span>{STAGE_LABELS[scanStage]}</span>
+                <span>{stageLabel(s, scanStage)}</span>
                 <span className="ml-auto font-mono text-xs tabular-nums">{elapsedLabel}</span>
               </div>
               <p className="mt-1 text-xs text-emerald-800">
-                AI analysis usually takes about a minute. Please keep this tab open.
+                {s.scanTakesAboutAMinute}
               </p>
             </div>
           ) : null}
@@ -339,7 +350,7 @@ export function FridgeScannerPanel({
               onClick={() => onShowLegal('privacy')}
               className="font-medium text-emerald-700 underline underline-offset-2 hover:text-emerald-800"
             >
-              Privacy Policy
+              {s.privacyPolicy}
             </button>
             {' · '}
             <button
@@ -347,7 +358,7 @@ export function FridgeScannerPanel({
               onClick={() => onShowLegal('terms')}
               className="font-medium text-emerald-700 underline underline-offset-2 hover:text-emerald-800"
             >
-              Terms
+              {s.terms}
             </button>
           </p>
         </div>

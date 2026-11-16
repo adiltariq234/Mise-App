@@ -43,6 +43,20 @@ export interface IngredientItem {
   inFridge: boolean;
 }
 
+/**
+ * Optional per-serving nutrition. Only shown when present — the app never
+ * invents macros. Seed and AI recipes ship without it; a future nutrition
+ * data source (or the AI prompt) can fill it in and the UI will display it.
+ * All values are per serving, matching `Recipe.calories`.
+ */
+export interface RecipeNutrition {
+  proteinGrams?: number;
+  carbsGrams?: number;
+  fatGrams?: number;
+  fiberGrams?: number;
+  sodiumMg?: number;
+}
+
 export interface RecipeStep {
   stepNumber: number;
   instruction: string;
@@ -59,6 +73,8 @@ export interface Recipe {
   cookTimeMinutes: number;
   calories: number;
   servings: number;
+  /** Per-serving macros — shown only when present, never invented. */
+  nutrition?: RecipeNutrition;
   dietaryTags: DietaryRestriction[];
   /** Only set when the photo genuinely depicts this dish. AI-generated
    * recipes have no imageUrl — the card renders a clean text-only header
@@ -108,3 +124,38 @@ export interface FridgeAnalysisResponse {
   summary: string;
   recipes: Recipe[];
 }
+
+/**
+ * One named fridge. The app used to have a single implicit inventory;
+ * multiple fridges are stored as profiles so a household can keep e.g.
+ * "Home Fridge" and "Garage Fridge" separate. Each profile owns its own
+ * ingredient list; scans apply to the active profile.
+ */
+export interface FridgeProfile {
+  id: string;
+  name: string;
+  ingredients: FridgeIngredient[];
+  createdAt: number;
+}
+
+/** Days of the week, Monday-first, for the meal planner. */
+export const WEEK_DAYS = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+] as const;
+
+export type WeekDay = (typeof WEEK_DAYS)[number];
+
+/** One planned meal: a recipe plus the servings it is cooked for. */
+export interface PlannedMeal {
+  recipeId: string;
+  servings: number;
+}
+
+/** A week of planned meals — a day with no entry has nothing planned. */
+export type MealPlan = Partial<Record<WeekDay, PlannedMeal>>;

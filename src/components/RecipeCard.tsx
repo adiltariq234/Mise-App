@@ -1,10 +1,15 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Check, ChevronDown, ChevronUp, ChefHat, Heart, Plus } from 'lucide-react';
 import type { IngredientItem, Recipe, ShoppingListItem } from '../types/culinary';
 import {
   getIngredientCounts,
   isIngredientInShoppingList,
 } from '../utils/recipeLogic';
+import { scaleRecipe } from '../utils/amounts.ts';
+import { recipeAllergens } from '../utils/allergens.ts';
+import { ServingsScaler } from './ServingsScaler';
+import type { UiStrings } from '../utils/i18n.ts';
+import { getStrings } from '../utils/i18n.ts';
 
 interface RecipeCardProps {
   recipe: Recipe;
@@ -16,6 +21,7 @@ interface RecipeCardProps {
     recipeTitle: string,
   ) => void;
   onSelectRecipe: (recipe: Recipe) => void;
+  s?: UiStrings;
 }
 
 export function RecipeCard({
@@ -25,12 +31,22 @@ export function RecipeCard({
   onToggleFavorite,
   onAddMissingToShoppingList,
   onSelectRecipe,
+  s = getStrings('en'),
 }: RecipeCardProps) {
   const [showIngredients, setShowIngredients] = useState(false);
   const [imgError, setImgError] = useState(false);
+  const [servings, setServings] = useState(recipe.servings);
 
   const totalTime = recipe.prepTimeMinutes + recipe.cookTimeMinutes;
   const { total, inFridgeCount, missingEssentials } = getIngredientCounts(recipe);
+  // Servings scaling: amounts with a leading number scale; amounts without
+  // one are shown as written (see utils/amounts.ts).
+  const scaled = useMemo(() => scaleRecipe(recipe, servings), [recipe, servings]);
+  const scaledByName = useMemo(
+    () => new Map(scaled.ingredients.map((ing) => [ing.name, ing])),
+    [scaled],
+  );
+  const allergens = useMemo(() => recipeAllergens(recipe), [recipe]);
   // Honest imagery only: show a photo only when it genuinely depicts this
   // dish. AI recipes have no imageUrl — they get a clean text-only header
   // instead of a misleading stock photo (QA P0-4).
@@ -104,7 +120,10 @@ export function RecipeCard({
           <span>{recipe.calories} kcal</span>
           <span aria-hidden="true">·</span>
           <span>
-            {recipe.servings} {recipe.servings === 1 ? 'serving' : 'servings'}
+            {servings} {servings === 1 ? s.serving : s.servings}
+            {servings !== recipe.servings
+              ? ` · ${scaled.totalCalories} kcal ${s.totalCalories}`
+              : ''}
           </span>
         </div>
 
@@ -121,6 +140,24 @@ export function RecipeCard({
             {recipe.dietaryTags.join(' · ')}
           </p>
         ) : null}
+
+        {/* Allergen flags — from ingredient names only, never inferred. */}
+        {allergens.length > 0 ? (
+          <p className="mt-2 text-xs">
+            <span className="font-medium text-amber-800">{s.contains}: </span>
+            <span className="text-amber-900">{allergens.join(', ')}</span>
+          </p>
+        ) : null}
+
+        {/* Servings scaler */}
+        <div className="mt-3">
+          <ServingsScaler
+            servings={servings}
+            baseServings={recipe.servings}
+            onChange={setServings}
+            s={s}
+          />
+        </div>
 
         {/* Ingredient Match & One-Click Missing Essentials */}
         <div className="mt-4 border-t border-slate-100 pt-3.5">
@@ -155,7 +192,10 @@ export function RecipeCard({
                     key={ing.name}
                     type="button"
                     onClick={() =>
-                      onAddMissingToShoppingList(ing, recipe.title)
+                      onAddMissingToShoppingList(
+                        scaledByName.get(ing.name) || ing,
+                        recipe.title,
+                      )
                     }
                     aria-label={`Add ${ing.name} to shopping list`}
                     className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-900 whitespace-nowrap transition-colors hover:border-amber-300 hover:bg-amber-100"
@@ -179,10 +219,39 @@ export function RecipeCard({
             </p>
           ) : null}
 
-          {/* Expandable Full Ingredient Breakdown */}
+          {/* Expandable Full Ingredient Breakdown — amounts scaled to the
+              chosen servings; unscalable amounts shown as written. */}
           {showIngredients ? (
-            <ul className="mt-3 space-y-1.5 border-t border-slate-100 pt-3 text-xs">
-              {recipe.ingredients.map((ing) => {
+            <>
+              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-700">
+                <p className="font-semibold text-slate-900">{s.nutrition}</p>
+                <p className="mt-0.5 tabular-nums">
+                  {recipe.calories} {s.caloriesPerServing}
+                  {servings !== recipe.servings
+                    ? ` · ${scaled.totalCalories} kcal ${s.totalCalories}`
+                    : ''}
+                </p>
+                {recipe.nutrition ? (
+                  <p className="mt-0.5 tabular-nums">
+                    {recipe.nutrition.proteinGrams !== undefined
+                      ? `Protein ${recipe.nutrition.proteinGrams} g · `
+                      : ''}
+                    {recipe.nutrition.carbsGrams !== undefined
+                      ? `Carbs ${recipe.nutrition.carbsGrams} g · `
+                      : ''}
+                    {recipe.nutrition.fatGrams !== undefined
+                      ? `Fat ${recipe.nutrition.fatGrams} g`
+                      : ''}
+                  </p>
+                ) : (
+                  <p className="mt-0.5 text-slate-500">{s.macrosNotProvided}</p>
+                )}
+              </div>
+              {scaled.unscaledCount > 0 ? (
+                <p className="mt-2 text-xs text-slate-500">{s.notScalableNote}</p>
+              ) : null}
+              <ul className="mt-3 space-y-1.5 border-t border-slate-100 pt-3 text-xs">
+                {scaled.ingredients.map((ing) => {
                 const inList = isIngredientInShoppingList(
                   ing.name,
                   shoppingList,
@@ -200,7 +269,7 @@ export function RecipeCard({
                       >
                         {ing.name}
                       </span>{' '}
-                      <span className="text-slate-500">({ing.amount})</span>
+                      <span className="text-slate-500">({ing.scaledAmount})</span>
                     </span>
                     {ing.inFridge ? (
                       <span className="text-emerald-700 shrink-0">In fridge</span>
@@ -209,7 +278,10 @@ export function RecipeCard({
                         type="button"
                         disabled={inList}
                         onClick={() =>
-                          onAddMissingToShoppingList(ing, recipe.title)
+                          onAddMissingToShoppingList(
+                            { ...ing, amount: ing.scaledAmount },
+                            recipe.title,
+                          )
                         }
                         className="font-medium text-amber-800 hover:text-amber-950 shrink-0 disabled:text-emerald-700"
                       >
@@ -220,6 +292,7 @@ export function RecipeCard({
                 );
               })}
             </ul>
+            </>
           ) : null}
         </div>
 

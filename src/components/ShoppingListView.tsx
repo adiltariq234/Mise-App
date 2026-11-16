@@ -1,7 +1,9 @@
 import { useState, type FormEvent } from 'react';
-import { Check, Copy, Pencil, Plus, ShoppingBag, Trash2, X } from 'lucide-react';
+import { Check, Copy, Pencil, Plus, Printer, ShoppingBag, Trash2, X } from 'lucide-react';
 import type { FridgeCategory, ShoppingListItem } from '../types/culinary';
 import { FRIDGE_CATEGORIES } from '../utils/categories';
+import type { UiStrings } from '../utils/i18n.ts';
+import { fmt, getStrings } from '../utils/i18n.ts';
 
 interface ShoppingListViewProps {
   items: ShoppingListItem[];
@@ -14,6 +16,7 @@ interface ShoppingListViewProps {
   onDeleteItem: (id: string) => void;
   onClearChecked: () => void;
   onBrowseRecipes: () => void;
+  s?: UiStrings;
 }
 
 export function ShoppingListView({
@@ -24,6 +27,7 @@ export function ShoppingListView({
   onDeleteItem,
   onClearChecked,
   onBrowseRecipes,
+  s = getStrings('en'),
 }: ShoppingListViewProps) {
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
@@ -93,11 +97,10 @@ export function ShoppingListView({
       <div className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-200 pb-5">
         <div>
           <h1 className="font-display text-3xl font-semibold tracking-tight text-slate-900">
-            Shopping List
+            {s.shoppingList}
           </h1>
           <p className="mt-1 text-sm text-slate-600 tabular-nums">
-            {remainingCount}{' '}
-            {remainingCount === 1 ? 'item' : 'items'} to pick up
+            {remainingCount} {s.itemsToPickUp}
             {checkedCount > 0 ? ` · ${checkedCount} checked` : ''}
           </p>
         </div>
@@ -114,7 +117,15 @@ export function ShoppingListView({
               ) : (
                 <Copy className="h-4 w-4" aria-hidden="true" />
               )}
-              <span>{copied ? 'Copied' : 'Copy List'}</span>
+              <span>{copied ? s.copied : s.copyList}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              <Printer className="h-4 w-4" aria-hidden="true" />
+              <span>{s.print}</span>
             </button>
             {checkedCount > 0 ? (
               <button
@@ -123,7 +134,7 @@ export function ShoppingListView({
                 className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
               >
                 <Trash2 className="h-4 w-4" aria-hidden="true" />
-                <span>Clear Checked</span>
+                <span>{s.clearChecked}</span>
               </button>
             ) : null}
           </div>
@@ -133,21 +144,21 @@ export function ShoppingListView({
       {/* Quick Add Form */}
       <form
         onSubmit={handleSubmit}
-        className="mt-6 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-end"
+        className="no-print mt-6 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:flex-row sm:items-end"
       >
         <div className="flex-1">
           <label
             htmlFor="shopping-item-name"
             className="block text-xs font-medium text-slate-700"
           >
-            Ingredient or grocery item
+            {s.addItemLabel}
           </label>
           <input
             id="shopping-item-name"
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g., Feta Cheese, Fresh Dill, Tahini"
+            placeholder={s.itemPlaceholder}
             className="mt-1 w-full rounded-lg border border-slate-200 px-3.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none"
           />
         </div>
@@ -156,14 +167,14 @@ export function ShoppingListView({
             htmlFor="shopping-item-amount"
             className="block text-xs font-medium text-slate-700"
           >
-            Quantity
+            {s.quantity}
           </label>
           <input
             id="shopping-item-amount"
             type="text"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            placeholder="e.g., 200 g"
+            placeholder={s.quantityPlaceholder}
             className="mt-1 w-full rounded-lg border border-slate-200 px-3.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none"
           />
         </div>
@@ -172,7 +183,7 @@ export function ShoppingListView({
             htmlFor="shopping-item-category"
             className="block text-xs font-medium text-slate-700"
           >
-            Category
+            {s.category}
           </label>
           <select
             id="shopping-item-category"
@@ -192,7 +203,7 @@ export function ShoppingListView({
           className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 whitespace-nowrap shrink-0"
         >
           <Plus className="h-4 w-4" aria-hidden="true" />
-          <span>Add Item</span>
+          <span>{s.addItem}</span>
         </button>
       </form>
 
@@ -204,17 +215,17 @@ export function ShoppingListView({
             aria-hidden="true"
           />
           <h2 className="mt-3 font-display text-xl font-semibold text-slate-900">
-            Your shopping list is empty
+            {s.listEmpty}
           </h2>
           <p className="mx-auto mt-1.5 max-w-md text-sm text-slate-600">
-            Missing an essential ingredient in a recipe? Click one-click add on any recipe card, or type items above.
+            {s.listEmptyHint}
           </p>
           <button
             type="button"
             onClick={onBrowseRecipes}
             className="mt-5 inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800"
           >
-            <span>Browse Recipes</span>
+            <span>{s.browseRecipes}</span>
           </button>
         </div>
       ) : (
@@ -304,7 +315,7 @@ export function ShoppingListView({
                             </div>
                             {item.sourceRecipe ? (
                               <p className="mt-0.5 text-xs text-slate-500">
-                                For {item.sourceRecipe}
+                                {fmt(s.forRecipe, { title: item.sourceRecipe })}
                               </p>
                             ) : null}
                           </div>

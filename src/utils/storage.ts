@@ -44,6 +44,10 @@ export function removeStored(key: string): void {
 export const STORAGE_KEYS = {
   shoppingList: 'mise_shopping_list_v1',
   fridge: 'mise_fridge_v1',
+  fridges: 'mise_fridges_v1',
+  activeFridge: 'mise_active_fridge_v1',
+  mealPlan: 'mise_meal_plan_v1',
+  language: 'mise_lang_v1',
   lastScan: 'mise_last_scan_v1',
   scanHistory: 'mise_scan_history_v1',
   favorites: 'mise_favorites_v1',
@@ -53,6 +57,10 @@ export const STORAGE_KEYS = {
 export const STORAGE_VERSIONS = {
   shoppingList: 1,
   fridge: 1,
+  fridges: 1,
+  activeFridge: 1,
+  mealPlan: 1,
+  language: 1,
   lastScan: 1,
   scanHistory: 1,
   favorites: 1,

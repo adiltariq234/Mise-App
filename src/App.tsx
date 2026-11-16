@@ -6,6 +6,8 @@ import { FridgeScannerPanel, type ScanStage } from './components/FridgeScannerPa
 import { RecipeCard } from './components/RecipeCard';
 import { CookingMode } from './components/CookingMode';
 import { ShoppingListView } from './components/ShoppingListView';
+import { MealPlanner } from './components/MealPlanner';
+import { SharePanel } from './components/SharePanel';
 import { LegalPages, type LegalView } from './components/LegalPages';
 import {
   INITIAL_FRIDGE_INGREDIENTS,
@@ -19,10 +21,13 @@ import type {
   FridgeCategory,
   FridgeIngredient,
   FridgeAnalysisResponse,
+  FridgeProfile,
   IngredientItem,
+  MealPlan,
   Recipe,
   ScanRecord,
   ShoppingListItem,
+  WeekDay,
 } from './types/culinary';
 import {
   createShoppingItemFromIngredient,
@@ -35,12 +40,25 @@ import {
   addFridgeIngredient,
   fridgeIngredientNames,
   fromScanNames,
+  makeFridgeIngredient,
   removeFridgeIngredient,
   updateFridgeIngredient,
 } from './utils/fridge';
+import {
+  addFridgeProfile,
+  deleteFridgeProfile,
+  initialFridgeProfiles,
+  makeFridgeProfile,
+  renameFridgeProfile,
+  updateProfileIngredients,
+} from './utils/fridges.ts';
 import { loadStored, saveStored, removeStored, STORAGE_KEYS, STORAGE_VERSIONS } from './utils/storage';
 import { prepareImageDataUrl, prepareImageFile, makeThumbnail } from './utils/imagePrep';
 import { fetchWithTimeout, friendlyApiError, parseApiPayload, ApiTimeoutError } from './utils/errors';
+import { clearMeal, planMissingIngredients, setMeal } from './utils/mealPlan.ts';
+import { decodeShare, type SharePayload } from './utils/sharing.ts';
+import { getStrings, fmt, isLanguage, type Language } from './utils/i18n.ts';
+import { WEEK_DAYS } from './types/culinary.ts';
 
 const DEFAULT_FILTERS: FilterState = {
   dietary: [],
@@ -57,13 +75,8 @@ const SYNC_TIMEOUT_MS = 150_000;
 const POLL_INTERVAL_MS = 3_000;
 const POLL_MAX_ATTEMPTS = 45;
 
-function initialFridge(): FridgeIngredient[] {
-  const saved = loadStored<FridgeIngredient[]>(
-    STORAGE_KEYS.fridge,
-    STORAGE_VERSIONS.fridge,
-  );
-  if (saved && saved.length > 0) return saved;
-  return fromScanNames(INITIAL_FRIDGE_INGREDIENTS);
+function initialProfiles(): FridgeProfile[] {
+  return initialFridgeProfiles(fromScanNames(INITIAL_FRIDGE_INGREDIENTS));
 }
 
 function initialLastScan(): ScanRecord | null {
@@ -85,9 +98,18 @@ export default function App() {
     lastScan.current?.summary || DEMO_SUMMARY,
   );
   const [isDemo, setIsDemo] = useState<boolean>(!lastScan.current);
-  const [fridgeIngredients, setFridgeIngredients] = useState<FridgeIngredient[]>(
-    initialFridge,
+  const [fridgeProfiles, setFridgeProfiles] =
+    useState<FridgeProfile[]>(initialProfiles);
+  const [activeFridgeId, setActiveFridgeId] = useState<string>(() =>
+    loadStored<string>(STORAGE_KEYS.activeFridge, STORAGE_VERSIONS.activeFridge) || '',
   );
+  // The active profile (falls back to the first when the saved id is gone)
+  // and its ingredients — most of the app reads `fridgeIngredients` and
+  // does not need to know about profiles.
+  const activeProfile =
+    fridgeProfiles.find((p) => p.id === activeFridgeId) || fridgeProfiles[0];
+  const activeFridgeIdResolved = activeProfile?.id || '';
+  const fridgeIngredients: FridgeIngredient[] = activeProfile?.ingredients || [];
   const [rawRecipes, setRawRecipes] = useState<Recipe[]>(
     lastScan.current?.recipes?.length ? lastScan.current.recipes : INITIAL_RECIPES,
   );
@@ -112,21 +134,57 @@ export default function App() {
     loadStored<ShoppingListItem[]>(STORAGE_KEYS.shoppingList, STORAGE_VERSIONS.shoppingList) || [],
   );
 
+  // Language (English / Urdu) — persisted; `s` is the UI strings object
+  // passed down to components.
+  const [lang, setLang] = useState<Language>(() => {
+    const saved = loadStored<Language>(STORAGE_KEYS.language, STORAGE_VERSIONS.language);
+    return isLanguage(saved) ? saved : 'en';
+  });
+  const s = getStrings(lang);
+
+  // Weekly meal plan — persisted in localStorage.
+  const [mealPlan, setMealPlan] = useState<MealPlan>(() =>
+    loadStored<MealPlan>(STORAGE_KEYS.mealPlan, STORAGE_VERSIONS.mealPlan) || {},
+  );
+
+  // Family sharing (local-only): a `#share=<code>` link decoded on load,
+  // plus the last import status shown in the share panel.
+  const [pendingShare, setPendingShare] = useState<SharePayload | null>(null);
+  const [shareStatus, setShareStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const hash = window.location.hash;
+      if (!hash.startsWith('#share=')) return;
+      const decoded = decodeShare(hash.slice('#share='.length));
+      if (decoded.ok) {
+        setPendingShare(decoded.payload);
+      } else {
+        setShareStatus(decoded.error);
+      }
+    } catch {
+      // Ignore (non-browser runtimes)
+    }
+  }, []);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const inFlightRef = useRef(false);
   const pollTimerRef = useRef<number | null>(null);
 
   // Latest state for async callbacks (polling / fetch continuations) so
   // they never act on a stale render's closure.
-  const stateRef = useRef({ fridgeIngredients, rawRecipes, summaryText });
+  const stateRef = useRef({ fridgeProfiles, activeFridgeIdResolved, rawRecipes, summaryText });
   useEffect(() => {
-    stateRef.current = { fridgeIngredients, rawRecipes, summaryText };
+    stateRef.current = { fridgeProfiles, activeFridgeIdResolved, rawRecipes, summaryText };
   });
 
-  // Persist fridge, favorites, history, shopping list (safe wrappers).
+  // Persist fridges, favorites, history, shopping list (safe wrappers).
   useEffect(() => {
-    saveStored(STORAGE_KEYS.fridge, STORAGE_VERSIONS.fridge, fridgeIngredients);
-  }, [fridgeIngredients]);
+    saveStored(STORAGE_KEYS.fridges, STORAGE_VERSIONS.fridges, fridgeProfiles);
+  }, [fridgeProfiles]);
+  useEffect(() => {
+    saveStored(STORAGE_KEYS.activeFridge, STORAGE_VERSIONS.activeFridge, activeFridgeIdResolved);
+  }, [activeFridgeIdResolved]);
   useEffect(() => {
     saveStored(STORAGE_KEYS.favorites, STORAGE_VERSIONS.favorites, favorites);
   }, [favorites]);
@@ -136,6 +194,17 @@ export default function App() {
   useEffect(() => {
     saveStored(STORAGE_KEYS.shoppingList, STORAGE_VERSIONS.shoppingList, shoppingList);
   }, [shoppingList]);
+  useEffect(() => {
+    saveStored(STORAGE_KEYS.mealPlan, STORAGE_VERSIONS.mealPlan, mealPlan);
+  }, [mealPlan]);
+  useEffect(() => {
+    saveStored(STORAGE_KEYS.language, STORAGE_VERSIONS.language, lang);
+    try {
+      document.documentElement.lang = lang;
+    } catch {
+      // Ignore (non-browser runtimes)
+    }
+  }, [lang]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'auto' });
@@ -205,19 +274,53 @@ export default function App() {
     });
   };
 
+  /** Apply a pure ingredient-list change to the active fridge profile. */
+  const updateActiveIngredients = (
+    fn: (items: FridgeIngredient[]) => FridgeIngredient[],
+  ) => {
+    const id = activeFridgeIdResolved;
+    if (!id) return;
+    setFridgeProfiles((prev) =>
+      updateProfileIngredients(prev, id, fn(fridgeIngredients)),
+    );
+  };
+
   const handleAddIngredient = (name: string, quantity?: string, category?: FridgeCategory) => {
-    setFridgeIngredients((prev) => addFridgeIngredient(prev, name, { quantity, category }));
+    updateActiveIngredients((prev) => addFridgeIngredient(prev, name, { quantity, category }));
   };
 
   const handleUpdateIngredient = (
     id: string,
     patch: Partial<Pick<FridgeIngredient, 'name' | 'quantity' | 'category' | 'expiresAt'>>,
   ) => {
-    setFridgeIngredients((prev) => updateFridgeIngredient(prev, id, patch));
+    updateActiveIngredients((prev) => updateFridgeIngredient(prev, id, patch));
   };
 
   const handleRemoveIngredient = (id: string) => {
-    setFridgeIngredients((prev) => removeFridgeIngredient(prev, id));
+    updateActiveIngredients((prev) => removeFridgeIngredient(prev, id));
+  };
+
+  // --- Fridge profiles --------------------------------------------------
+  const handleAddFridge = (name: string) => {
+    if (!name.trim()) return;
+    const profile = makeFridgeProfile(name, []);
+    setFridgeProfiles((prev) => [...prev, profile]);
+    setActiveFridgeId(profile.id);
+  };
+
+  const handleRenameFridge = (id: string, name: string) => {
+    setFridgeProfiles((prev) => renameFridgeProfile(prev, id, name));
+  };
+
+  const handleDeleteFridge = (id: string) => {
+    const next = deleteFridgeProfile(fridgeProfiles, id);
+    if (next.length === fridgeProfiles.length) return; // last one: no-op
+    setFridgeProfiles(next);
+    if (id === activeFridgeIdResolved) setActiveFridgeId(next[0].id);
+  };
+
+  const handleSelectFridge = (id: string) => {
+    setActiveFridgeId(id);
   };
 
   const handleAddMissingToShoppingList = (
@@ -282,19 +385,137 @@ export default function App() {
     );
   };
 
+  // --- Weekly meal plan -------------------------------------------------
+  const handleSetMeal = (day: WeekDay, recipeId: string, servings: number) => {
+    setMealPlan((prev) => setMeal(prev, day, recipeId, servings));
+  };
+
+  const handleClearMeal = (day: WeekDay) => {
+    setMealPlan((prev) => clearMeal(prev, day));
+  };
+
+  const handleClearPlan = () => {
+    setMealPlan({});
+  };
+
+  /** Add the planned meals' missing essentials to the shopping list. */
+  const handleAddPlanToShoppingList = () => {
+    const missing = planMissingIngredients(
+      mealPlan,
+      syncedRecipes,
+      fridgeIngredientNames(fridgeIngredients),
+    );
+    if (missing.length === 0) return;
+    setShoppingList((prev) => {
+      let next = prev;
+      for (const { ingredient, recipeTitle } of missing) {
+        next = mergeShoppingListItem(
+          next,
+          createShoppingItemFromIngredient(ingredient, recipeTitle),
+        );
+      }
+      return next;
+    });
+  };
+
+  // --- Family sharing (local-only import) -------------------------------
+  const clearShareHash = () => {
+    try {
+      window.history.replaceState(
+        null,
+        '',
+        window.location.pathname + window.location.search,
+      );
+    } catch {
+      // Ignore (non-browser runtimes)
+    }
+  };
+
+  /**
+   * Import a decoded share payload: the shared fridge becomes a new
+   * profile (fresh ids, so nothing collides), shopping items merge by
+   * name, and the meal plan fills only days that are still empty.
+   * Returns a short summary for the share panel.
+   */
+  const handleImportShare = (payload: SharePayload): string => {
+    const parts: string[] = [];
+    if (payload.fridge) {
+      const imported = payload.fridge.ingredients.map((i) =>
+        makeFridgeIngredient(i.name, i.source, {
+          quantity: i.quantity,
+          category: i.category,
+          expiresAt: i.expiresAt ?? null,
+        }),
+      );
+      const profile = makeFridgeProfile(
+        `${payload.fridge.name} (shared)`,
+        imported,
+      );
+      setFridgeProfiles((prev) => [...prev, profile]);
+      setActiveFridgeId(profile.id);
+      parts.push(`fridge "${payload.fridge.name}" (${imported.length} items)`);
+    }
+    if (payload.shoppingList && payload.shoppingList.length > 0) {
+      const items = payload.shoppingList;
+      setShoppingList((prev) => {
+        let next = prev;
+        for (const item of items) {
+          next = mergeShoppingListItem(next, {
+            ...item,
+            id: `${normalizeIngredientName(item.name)}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          });
+        }
+        return next;
+      });
+      parts.push(`${items.length} shopping items`);
+    }
+    if (payload.mealPlan) {
+      const fillCount = WEEK_DAYS.filter(
+        (day) => !mealPlan[day] && payload.mealPlan?.[day],
+      ).length;
+      if (fillCount > 0) {
+        const incoming = payload.mealPlan;
+        setMealPlan((prev) => {
+          const next: MealPlan = { ...prev };
+          for (const day of WEEK_DAYS) {
+            if (!next[day] && incoming[day]) next[day] = incoming[day];
+          }
+          return next;
+        });
+        parts.push(`${fillCount} planned meals`);
+      }
+    }
+    clearShareHash();
+    const summary =
+      parts.length > 0
+        ? `Imported ${parts.join(', ')}.`
+        : 'Nothing to import — the share was empty.';
+    setShareStatus(summary);
+    return summary;
+  };
+
   /** Apply a successful scan: keep manual fridge items, replace scanned
    * ones, persist the scan + history, and remember the previous recipes
-   * so an AI refresh can be undone. */
+   * so an AI refresh can be undone. Scans always land in the active
+   * fridge profile. */
   const applyScanResult = (
     payload: FridgeAnalysisResponse,
     thumbnail: string | null,
     opts: { isRefresh?: boolean } = {},
   ) => {
     const scanned = fromScanNames(payload.detectedIngredients || []);
-    const manual = stateRef.current.fridgeIngredients.filter((i) => i.source === 'manual');
+    const ref = stateRef.current;
+    const active =
+      ref.fridgeProfiles.find((p) => p.id === ref.activeFridgeIdResolved) ||
+      ref.fridgeProfiles[0];
+    const manual = active
+      ? active.ingredients.filter((i) => i.source === 'manual')
+      : [];
     const nextFridge = [...manual, ...scanned];
-    if (scanned.length > 0) {
-      setFridgeIngredients(nextFridge);
+    if (scanned.length > 0 && active) {
+      setFridgeProfiles((prev) =>
+        updateProfileIngredients(prev, active.id, nextFridge),
+      );
     }
     setSummaryText(payload.summary || 'Ingredients identified from your fridge photo.');
     if (Array.isArray(payload.recipes) && payload.recipes.length > 0) {
@@ -485,7 +706,8 @@ export default function App() {
   const handleRestoreScan = (id: string) => {
     const record = scanHistory.find((r) => r.id === id);
     if (!record) return;
-    setFridgeIngredients(record.ingredients);
+    // A restored scan lands in the active fridge profile.
+    updateActiveIngredients(() => record.ingredients);
     setRawRecipes(record.recipes);
     setSummaryText(record.summary);
     setIsDemo(false);
@@ -502,7 +724,7 @@ export default function App() {
   };
 
   const handleClearScan = () => {
-    setFridgeIngredients(fromScanNames(INITIAL_FRIDGE_INGREDIENTS));
+    updateActiveIngredients(() => fromScanNames(INITIAL_FRIDGE_INGREDIENTS));
     setRawRecipes(INITIAL_RECIPES);
     setSummaryText(DEMO_SUMMARY);
     setPreviewImageUrl(SAMPLE_FRIDGE_IMAGE);
@@ -538,7 +760,48 @@ export default function App() {
         }}
         shoppingCount={activeShoppingCount}
         onTriggerScan={handleTriggerScanFromNav}
+        lang={lang}
+        onToggleLanguage={() => setLang((l) => (l === 'en' ? 'ur' : 'en'))}
+        s={s}
       />
+
+      {/* Shared-fridge import banner (from a #share= link) */}
+      {pendingShare ? (
+        <div className="no-print mx-auto max-w-[1440px] px-4 pt-4 sm:px-6 lg:px-8">
+          <div
+            role="status"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3"
+          >
+            <p className="text-sm text-emerald-900">
+              Someone shared a fridge with you
+              {pendingShare.fridge ? ` — "${pendingShare.fridge.name}"` : ''}.
+              Import it as a new fridge?
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  handleImportShare(pendingShare);
+                  setPendingShare(null);
+                }}
+                className="rounded-lg bg-emerald-700 px-3.5 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
+              >
+                {s.import}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingShare(null);
+                  clearShareHash();
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                {s.cancel}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {legalView ? (
         <LegalPages view={legalView} onClose={() => setLegalView(null)} />
@@ -551,6 +814,20 @@ export default function App() {
             shoppingList={shoppingList}
             onAddMissingToShoppingList={handleAddMissingToShoppingList}
             onExit={() => setSelectedRecipe(null)}
+            s={s}
+          />
+        </main>
+      ) : activeTab === 'plan' ? (
+        <main>
+          <MealPlanner
+            plan={mealPlan}
+            recipes={syncedRecipes}
+            fridgeNames={fridgeIngredientNames(fridgeIngredients)}
+            onSetMeal={handleSetMeal}
+            onClearMeal={handleClearMeal}
+            onClearPlan={handleClearPlan}
+            onAddPlanToShoppingList={handleAddPlanToShoppingList}
+            s={s}
           />
         </main>
       ) : activeTab === 'shopping' ? (
@@ -563,6 +840,7 @@ export default function App() {
             onDeleteItem={handleDeleteShoppingItem}
             onClearChecked={handleClearCheckedShoppingItems}
             onBrowseRecipes={() => setActiveTab('recipes')}
+            s={s}
           />
         </main>
       ) : (
@@ -578,8 +856,8 @@ export default function App() {
                 <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
                 <span>
                   {mobileFiltersOpen
-                    ? 'Hide Filters & Ingredients'
-                    : 'Dietary Filters & Fridge'}
+                    ? s.hideFilters
+                    : s.showFilters}
                   {filters.dietary.length > 0
                     ? ` (${filters.dietary.length})`
                     : ''}
@@ -588,7 +866,7 @@ export default function App() {
             </div>
 
             {/* Sidebar: Always visible on lg+, toggleable on mobile */}
-            <div className={`${mobileFiltersOpen ? 'block' : 'hidden'} lg:block`}>
+            <div className={`no-print ${mobileFiltersOpen ? 'block' : 'hidden'} lg:block`}>
               <FilterSidebar
                 filters={filters}
                 onToggleDietary={handleToggleDietary}
@@ -600,6 +878,12 @@ export default function App() {
                 }
                 onResetFilters={() => setFilters(DEFAULT_FILTERS)}
                 fridgeIngredients={fridgeIngredients}
+                fridgeProfiles={fridgeProfiles}
+                activeFridgeId={activeFridgeIdResolved}
+                onSelectFridge={handleSelectFridge}
+                onAddFridge={handleAddFridge}
+                onRenameFridge={handleRenameFridge}
+                onDeleteFridge={handleDeleteFridge}
                 onAddIngredient={handleAddIngredient}
                 onUpdateIngredient={handleUpdateIngredient}
                 onRemoveIngredient={handleRemoveIngredient}
@@ -608,7 +892,18 @@ export default function App() {
                 scanHistory={historyEntries}
                 onRestoreScan={handleRestoreScan}
                 onClearHistory={handleClearHistory}
+                s={s}
               />
+              <div className="mt-6">
+                <SharePanel
+                  activeFridge={activeProfile}
+                  shoppingList={shoppingList}
+                  mealPlan={mealPlan}
+                  onImportShare={handleImportShare}
+                  shareStatus={shareStatus}
+                  s={s}
+                />
+              </div>
             </div>
 
             {/* Main Content: Fridge Scanner + Scrollable Recipe Cards */}
@@ -627,21 +922,24 @@ export default function App() {
                 onClearScan={handleClearScan}
                 onShowLegal={(view) => setLegalView(view)}
                 fileInputRef={fileInputRef}
+                s={s}
               />
 
               {/* Recipe Feed Header + Search */}
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="font-display text-2xl font-semibold text-slate-900">
-                    Suggested Recipes
+                    {s.suggestedRecipes}
                   </h2>
                   <p className="text-sm text-slate-600 tabular-nums">
-                    Showing{' '}
-                    {filteredRecipes.length} of {syncedRecipes.length} recipes
+                    {fmt(s.showingLine, {
+                      shown: filteredRecipes.length,
+                      total: syncedRecipes.length,
+                    })}
                     {filters.dietary.length > 0
                       ? ` · ${filters.dietary.join(', ')}`
                       : ''}
-                    {favoritesOnly ? ' · favourites only' : ''}
+                    {favoritesOnly ? ` · ${s.favouritesOnly}` : ''}
                   </p>
                 </div>
 
@@ -661,7 +959,7 @@ export default function App() {
                       aria-hidden="true"
                     />
                     <span>
-                      Favourites
+                      {s.favourites}
                       {favoriteCount > 0 ? ` (${favoriteCount})` : ''}
                     </span>
                   </button>
@@ -673,7 +971,7 @@ export default function App() {
                       className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
                     >
                       <Undo2 className="h-4 w-4" aria-hidden="true" />
-                      <span>Undo AI refresh</span>
+                      <span>{s.undoRefresh}</span>
                     </button>
                   ) : null}
 
@@ -695,7 +993,7 @@ export default function App() {
                           searchQuery: e.target.value,
                         }))
                       }
-                      placeholder="Search dishes or ingredients..."
+                      placeholder={s.searchPlaceholder}
                       className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-8 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none"
                     />
                     {filters.searchQuery ? (
@@ -739,8 +1037,8 @@ export default function App() {
                 <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center">
                   <h3 className="font-display text-xl font-semibold text-slate-900">
                     {favoritesOnly
-                      ? 'No favourite recipes yet'
-                      : 'No recipes match those filters'}
+                      ? s.noFavouriteRecipes
+                      : s.noRecipesMatch}
                   </h3>
                   <p className="mx-auto mt-1.5 max-w-md text-sm text-slate-600">
                     {favoritesOnly
@@ -754,7 +1052,7 @@ export default function App() {
                         onClick={() => setFavoritesOnly(false)}
                         className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50"
                       >
-                        Show All Recipes
+                        {s.showAllRecipes}
                       </button>
                     ) : (
                       <>
@@ -763,14 +1061,14 @@ export default function App() {
                           onClick={() => setFilters(DEFAULT_FILTERS)}
                           className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50"
                         >
-                          Reset Filters
+                          {s.resetFilters}
                         </button>
                         <button
                           type="button"
                           onClick={handleRefreshRecipesWithAI}
                           className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
                         >
-                          Generate Matching Recipes
+                          {s.generateRecipes}
                         </button>
                       </>
                     )}
@@ -790,6 +1088,7 @@ export default function App() {
                       onToggleFavorite={handleToggleFavorite}
                       onAddMissingToShoppingList={handleAddMissingToShoppingList}
                       onSelectRecipe={(r) => setSelectedRecipe(r)}
+                      s={s}
                     />
                   ))}
                 </div>
@@ -809,7 +1108,7 @@ export default function App() {
                 onClick={() => setLegalView('privacy')}
                 className="font-medium text-emerald-700 underline underline-offset-2 hover:text-emerald-800"
               >
-                Privacy Policy
+                {s.privacyPolicy}
               </button>
               {' · '}
               <button
@@ -817,7 +1116,7 @@ export default function App() {
                 onClick={() => setLegalView('terms')}
                 className="font-medium text-emerald-700 underline underline-offset-2 hover:text-emerald-800"
               >
-                Terms and Conditions
+                {s.terms}
               </button>
             </p>
           </footer>

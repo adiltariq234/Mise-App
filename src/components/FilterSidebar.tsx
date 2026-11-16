@@ -1,13 +1,16 @@
 import { useState, type FormEvent } from 'react';
-import { Check, History, Pencil, Plus, RotateCcw, Sparkles, X } from 'lucide-react';
+import { Check, History, Pencil, Plus, Refrigerator, RotateCcw, Sparkles, Trash2, X } from 'lucide-react';
 import type {
   DietaryRestriction,
   DifficultyLevel,
   FilterState,
   FridgeCategory,
   FridgeIngredient,
+  FridgeProfile,
 } from '../types/culinary';
 import { FRIDGE_CATEGORIES } from '../utils/categories';
+import type { UiStrings } from '../utils/i18n.ts';
+import { getStrings } from '../utils/i18n.ts';
 
 const DIETARY_OPTIONS: DietaryRestriction[] = [
   'Vegetarian',
@@ -16,20 +19,6 @@ const DIETARY_OPTIONS: DietaryRestriction[] = [
   'Gluten-Free',
   'Dairy-Free',
   'High-Protein',
-];
-
-const PREP_TIME_OPTIONS: Array<{ label: string; value: number | null }> = [
-  { label: 'Any time', value: null },
-  { label: 'Under 15 min', value: 15 },
-  { label: 'Under 30 min', value: 30 },
-  { label: 'Under 45 min', value: 45 },
-];
-
-const DIFFICULTY_OPTIONS: Array<DifficultyLevel | 'All'> = [
-  'All',
-  'Easy',
-  'Medium',
-  'Hard',
 ];
 
 export interface ScanHistoryEntry {
@@ -46,6 +35,12 @@ interface FilterSidebarProps {
   onSetDifficulty: (difficulty: DifficultyLevel | 'All') => void;
   onResetFilters: () => void;
   fridgeIngredients: FridgeIngredient[];
+  fridgeProfiles: FridgeProfile[];
+  activeFridgeId: string;
+  onSelectFridge: (id: string) => void;
+  onAddFridge: (name: string) => void;
+  onRenameFridge: (id: string, name: string) => void;
+  onDeleteFridge: (id: string) => void;
   onAddIngredient: (name: string, quantity?: string, category?: FridgeCategory) => void;
   onUpdateIngredient: (
     id: string,
@@ -57,6 +52,7 @@ interface FilterSidebarProps {
   scanHistory: ScanHistoryEntry[];
   onRestoreScan: (id: string) => void;
   onClearHistory: () => void;
+  s?: UiStrings;
 }
 
 function formatScanDate(ts: number): string {
@@ -80,6 +76,12 @@ export function FilterSidebar({
   onSetDifficulty,
   onResetFilters,
   fridgeIngredients,
+  fridgeProfiles,
+  activeFridgeId,
+  onSelectFridge,
+  onAddFridge,
+  onRenameFridge,
+  onDeleteFridge,
   onAddIngredient,
   onUpdateIngredient,
   onRemoveIngredient,
@@ -88,6 +90,7 @@ export function FilterSidebar({
   scanHistory,
   onRestoreScan,
   onClearHistory,
+  s = getStrings('en'),
 }: FilterSidebarProps) {
   const [newIngredient, setNewIngredient] = useState('');
   const [newQuantity, setNewQuantity] = useState('');
@@ -96,6 +99,25 @@ export function FilterSidebar({
   const [editQuantity, setEditQuantity] = useState('');
   const [editCategory, setEditCategory] = useState<FridgeCategory>('Other');
   const [editExpiresAt, setEditExpiresAt] = useState('');
+  const [newFridgeName, setNewFridgeName] = useState('');
+  const [renaming, setRenaming] = useState(false);
+  const [renameName, setRenameName] = useState('');
+
+  // Option labels come from the UI strings so the Urdu toggle covers them.
+  const PREP_TIME_OPTIONS: Array<{ label: string; value: number | null }> = [
+    { label: s.anyTime, value: null },
+    { label: s.under15Min, value: 15 },
+    { label: s.under30Min, value: 30 },
+    { label: s.under45Min, value: 45 },
+  ];
+  const DIFFICULTY_OPTIONS: Array<{ label: string; value: DifficultyLevel | 'All' }> = [
+    { label: s.all, value: 'All' },
+    { label: s.easy, value: 'Easy' },
+    { label: s.medium, value: 'Medium' },
+    { label: s.hard, value: 'Hard' },
+  ];
+  const activeProfile =
+    fridgeProfiles.find((p) => p.id === activeFridgeId) || fridgeProfiles[0];
 
   const hasActiveFilters =
     filters.dietary.length > 0 ||
@@ -145,7 +167,7 @@ export function FilterSidebar({
       <section className="rounded-xl border border-slate-200 bg-white p-5">
         <div className="flex items-center justify-between gap-2 pb-4 border-b border-slate-100">
           <h2 className="text-base font-semibold text-slate-900">
-            Dietary Filters
+            {s.dietaryFilters}
           </h2>
           {hasActiveFilters ? (
             <button
@@ -154,7 +176,7 @@ export function FilterSidebar({
               className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 hover:text-emerald-800 whitespace-nowrap shrink-0"
             >
               <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>Reset</span>
+              <span>{s.reset}</span>
             </button>
           ) : null}
         </div>
@@ -191,7 +213,7 @@ export function FilterSidebar({
 
         {/* Total Time */}
         <div className="mt-6 border-t border-slate-100 pt-5">
-          <h3 className="text-sm font-semibold text-slate-900">Total Time</h3>
+          <h3 className="text-sm font-semibold text-slate-900">{s.totalTime}</h3>
           <div className="mt-2.5 grid grid-cols-2 gap-1.5">
             {PREP_TIME_OPTIONS.map((opt) => {
               const active = filters.maxPrepTime === opt.value;
@@ -215,22 +237,22 @@ export function FilterSidebar({
 
         {/* Difficulty */}
         <div className="mt-5 border-t border-slate-100 pt-5">
-          <h3 className="text-sm font-semibold text-slate-900">Difficulty</h3>
+          <h3 className="text-sm font-semibold text-slate-900">{s.difficulty}</h3>
           <div className="mt-2.5 flex items-center gap-1 rounded-lg bg-slate-100 p-1">
-            {DIFFICULTY_OPTIONS.map((level) => {
-              const active = filters.difficulty === level;
+            {DIFFICULTY_OPTIONS.map((opt) => {
+              const active = filters.difficulty === opt.value;
               return (
                 <button
-                  key={level}
+                  key={opt.value}
                   type="button"
-                  onClick={() => onSetDifficulty(level)}
+                  onClick={() => onSetDifficulty(opt.value)}
                   className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${
                     active
                       ? 'bg-white text-slate-900 shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  {level}
+                  {opt.label}
                 </button>
               );
             })}
@@ -238,14 +260,124 @@ export function FilterSidebar({
         </div>
       </section>
 
+      {/* Fridge switcher — multiple named fridges, each with its own list */}
+      <section className="rounded-xl border border-slate-200 bg-white p-5">
+        <h2 className="inline-flex items-center gap-1.5 text-base font-semibold text-slate-900">
+          <Refrigerator className="h-4 w-4 text-slate-500" aria-hidden="true" />
+          {s.fridges}
+        </h2>
+        <label className="sr-only" htmlFor="fridge-select">
+          Choose a fridge
+        </label>
+        <select
+          id="fridge-select"
+          value={activeProfile?.id || ''}
+          onChange={(e) => onSelectFridge(e.target.value)}
+          className="mt-3 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-emerald-700 focus:outline-none"
+        >
+          {fridgeProfiles.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name} ({p.ingredients.length})
+            </option>
+          ))}
+        </select>
+        {renaming && activeProfile ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              onRenameFridge(activeProfile.id, renameName);
+              setRenaming(false);
+            }}
+            className="mt-2 flex gap-2"
+          >
+            <label className="sr-only" htmlFor="rename-fridge">
+              New fridge name
+            </label>
+            <input
+              id="rename-fridge"
+              type="text"
+              value={renameName}
+              onChange={(e) => setRenameName(e.target.value)}
+              className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:border-emerald-700 focus:outline-none"
+            />
+            <button
+              type="submit"
+              className="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-800"
+            >
+              {s.save}
+            </button>
+            <button
+              type="button"
+              onClick={() => setRenaming(false)}
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+            >
+              {s.cancel}
+            </button>
+          </form>
+        ) : (
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setRenameName(activeProfile?.name || '');
+                setRenaming(true);
+              }}
+              className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+            >
+              <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>{s.renameFridge}</span>
+            </button>
+            {fridgeProfiles.length > 1 && activeProfile ? (
+              <button
+                type="button"
+                onClick={() => onDeleteFridge(activeProfile.id)}
+                className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>{s.deleteFridge}</span>
+              </button>
+            ) : null}
+          </div>
+        )}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const name = newFridgeName.trim();
+            if (!name) return;
+            onAddFridge(name);
+            setNewFridgeName('');
+          }}
+          className="mt-3 flex gap-2"
+        >
+          <label className="sr-only" htmlFor="new-fridge-name">
+            New fridge name
+          </label>
+          <input
+            id="new-fridge-name"
+            type="text"
+            value={newFridgeName}
+            onChange={(e) => setNewFridgeName(e.target.value)}
+            placeholder={s.fridgeNamePlaceholder}
+            className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none"
+          />
+          <button
+            type="submit"
+            className="inline-flex items-center gap-1 rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-800 whitespace-nowrap"
+          >
+            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>{s.newFridge}</span>
+          </button>
+        </form>
+      </section>
+
       {/* Fridge Ingredients — full management */}
       <section className="rounded-xl border border-slate-200 bg-white p-5">
         <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100">
           <h2 className="text-base font-semibold text-slate-900">
-            In Your Fridge
+            {s.inYourFridge}
           </h2>
           <span className="font-mono text-xs text-slate-500 tabular-nums">
-            {fridgeIngredients.length} items
+            {fridgeIngredients.length} {s.items}
           </span>
         </div>
 
@@ -259,7 +391,7 @@ export function FilterSidebar({
               type="text"
               value={newIngredient}
               onChange={(e) => setNewIngredient(e.target.value)}
-              placeholder="Add ingredient..."
+              placeholder={s.addIngredient}
               className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none"
             />
             <button
@@ -274,7 +406,7 @@ export function FilterSidebar({
             type="text"
             value={newQuantity}
             onChange={(e) => setNewQuantity(e.target.value)}
-            placeholder="Quantity (optional, e.g. 200 g)"
+            placeholder={s.quantityOptional}
             aria-label="Quantity for new ingredient"
             className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-700 focus:outline-none"
           />
@@ -282,7 +414,7 @@ export function FilterSidebar({
 
         {fridgeIngredients.length === 0 ? (
           <p className="mt-4 text-xs leading-relaxed text-slate-500">
-            No ingredients listed yet. Snap a fridge photo or add ingredients above.
+            {s.noIngredientsYet}
           </p>
         ) : (
           <div className="mt-3 max-h-72 space-y-3 overflow-y-auto pr-1">
@@ -332,7 +464,7 @@ export function FilterSidebar({
                           </div>
                           <div className="flex items-center gap-2">
                             <label htmlFor={`expiry-${item.id}`} className="text-xs text-slate-500">
-                              Use by
+                              {s.useBy}
                             </label>
                             <input
                               id={`expiry-${item.id}`}
@@ -349,14 +481,14 @@ export function FilterSidebar({
                               className="inline-flex items-center gap-1 rounded-md bg-emerald-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-800"
                             >
                               <Check className="h-3.5 w-3.5" aria-hidden="true" />
-                              Save
+                              {s.save}
                             </button>
                             <button
                               type="button"
                               onClick={() => setEditingId(null)}
                               className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
                             >
-                              Cancel
+                              {s.cancel}
                             </button>
                           </div>
                         </div>
@@ -377,8 +509,8 @@ export function FilterSidebar({
                                     : 'text-slate-400'
                                 }`}
                               >
-                                Use by {item.expiresAt}
-                                {isExpiringSoon(item) ? ' — soon' : ''}
+                                {s.useBy} {item.expiresAt}
+                                {isExpiringSoon(item) ? ` — ${s.soon}` : ''}
                               </span>
                             ) : null}
                           </span>
@@ -418,7 +550,7 @@ export function FilterSidebar({
         >
           <Sparkles className="h-3.5 w-3.5 text-emerald-700" aria-hidden="true" />
           <span>
-            {isRefreshingAI ? 'Generating Recipes...' : 'Refresh Recipes with AI'}
+            {isRefreshingAI ? s.generatingRecipes : s.refreshWithAI}
           </span>
         </button>
       </section>
@@ -429,14 +561,14 @@ export function FilterSidebar({
           <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100">
             <h2 className="inline-flex items-center gap-1.5 text-base font-semibold text-slate-900">
               <History className="h-4 w-4 text-slate-500" aria-hidden="true" />
-              Recent Scans
+              {s.recentScans}
             </h2>
             <button
               type="button"
               onClick={onClearHistory}
               className="text-xs font-medium text-slate-500 hover:text-slate-800"
             >
-              Clear
+              {s.clear}
             </button>
           </div>
           <ul className="mt-3 space-y-2">
