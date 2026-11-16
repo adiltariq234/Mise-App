@@ -1,12 +1,17 @@
-import { Camera, ShoppingBag, UtensilsCrossed } from 'lucide-react';
+import { CalendarDays, Camera, Languages, ShoppingBag, UtensilsCrossed } from 'lucide-react';
+import type { Language, UiStrings } from '../utils/i18n.ts';
+import { getStrings } from '../utils/i18n.ts';
 
-export type ActiveTab = 'recipes' | 'shopping';
+export type ActiveTab = 'recipes' | 'shopping' | 'plan';
 
 interface TopNavProps {
   activeTab: ActiveTab;
   onSelectTab: (tab: ActiveTab) => void;
   shoppingCount: number;
   onTriggerScan: () => void;
+  lang?: Language;
+  onToggleLanguage?: () => void;
+  s?: UiStrings;
 }
 
 export function TopNav({
@@ -14,6 +19,9 @@ export function TopNav({
   onSelectTab,
   shoppingCount,
   onTriggerScan,
+  lang = 'en',
+  onToggleLanguage,
+  s = getStrings('en'),
 }: TopNavProps) {
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur-sm">
@@ -53,7 +61,20 @@ export function TopNav({
             }`}
           >
             <UtensilsCrossed className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden="true" />
-            <span className="hidden sm:inline">Recipes</span>
+            <span className="hidden sm:inline">{s.recipes}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onSelectTab('plan')}
+            className={`inline-flex items-center gap-1.5 sm:gap-2 border-b-2 py-1 whitespace-nowrap shrink-0 transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-700 ${
+              activeTab === 'plan'
+                ? 'border-emerald-700 text-slate-900'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <CalendarDays className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden="true" />
+            <span className="hidden sm:inline">{s.mealPlan}</span>
           </button>
 
           <button
@@ -67,7 +88,7 @@ export function TopNav({
           >
             <ShoppingBag className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden="true" />
             <span className="hidden sm:inline">
-              Shopping List
+              {s.shoppingList}
               {shoppingCount > 0 ? (
                 <span className="ml-1 font-mono text-xs text-emerald-700 tabular-nums">
                   ({shoppingCount})
@@ -77,17 +98,30 @@ export function TopNav({
           </button>
         </nav>
 
-        {/* Zone 3: Single Primary Action */}
-        <div className="shrink-0">
+        {/* Zone 3: Language toggle + single primary action */}
+        <div className="flex shrink-0 items-center gap-2">
+          {onToggleLanguage ? (
+            <button
+              type="button"
+              onClick={onToggleLanguage}
+              aria-label={s.language}
+              title={s.language}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 whitespace-nowrap"
+            >
+              <Languages className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden="true" />
+              {/* Label hidden on phones (icons-only header, see Zone 2 note). */}
+              <span className="hidden sm:inline">{lang === 'en' ? 'اردو' : 'EN'}</span>
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onTriggerScan}
-            aria-label="Scan Fridge"
+            aria-label={s.scanFridge}
             className="inline-flex items-center gap-1.5 sm:gap-2 rounded-lg bg-emerald-700 px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-semibold text-white transition-colors hover:bg-emerald-800 whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
           >
             <Camera className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden="true" />
-            <span className="sm:hidden">Scan</span>
-            <span className="hidden sm:inline">Scan Fridge</span>
+            <span className="sm:hidden">{s.scan}</span>
+            <span className="hidden sm:inline">{s.scanFridge}</span>
           </button>
         </div>
       </div>

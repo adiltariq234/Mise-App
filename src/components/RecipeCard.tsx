@@ -20,7 +20,7 @@ interface RecipeCardProps {
     ingredient: IngredientItem,
     recipeTitle: string,
   ) => void;
-  onSelectRecipe: (recipe: Recipe) => void;
+  onSelectRecipe: (recipe: Recipe, servings: number) => void;
   s?: UiStrings;
 }
 
@@ -300,7 +300,7 @@ export function RecipeCard({
         <div className="mt-5 pt-1">
           <button
             type="button"
-            onClick={() => onSelectRecipe(recipe)}
+            onClick={() => onSelectRecipe(recipe, servings)}
             aria-label={`Start cooking ${recipe.title}`}
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
           >

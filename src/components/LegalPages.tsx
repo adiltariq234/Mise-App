@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { X } from 'lucide-react';
 
 export type LegalView = 'privacy' | 'terms' | null;
@@ -11,6 +12,15 @@ export function LegalPages({
   view: Exclude<LegalView, null>;
   onClose: () => void;
 }) {
+  // Escape closes the dialog (QA finding 16 Nov 2026 — previously only the
+  // bottom Close button worked).
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
   return (
     <div
       role="dialog"

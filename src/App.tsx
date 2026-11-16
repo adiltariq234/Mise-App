@@ -86,6 +86,9 @@ function initialLastScan(): ScanRecord | null {
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('recipes');
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
+  // Servings the user chose on the recipe card, carried into cooking mode
+  // (QA finding 16 Nov 2026 — cooking mode used to reset to the default).
+  const [cookingServings, setCookingServings] = useState<number | null>(null);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [legalView, setLegalView] = useState<LegalView>(null);
 
@@ -737,6 +740,7 @@ export default function App() {
 
   const handleTriggerScanFromNav = () => {
     setSelectedRecipe(null);
+    setCookingServings(null);
     setActiveTab('recipes');
     requestAnimationFrame(() => {
       fileInputRef.current?.click();
@@ -756,6 +760,7 @@ export default function App() {
         activeTab={activeTab}
         onSelectTab={(tab) => {
           setSelectedRecipe(null);
+          setCookingServings(null);
           setActiveTab(tab);
         }}
         shoppingCount={activeShoppingCount}
@@ -811,9 +816,13 @@ export default function App() {
         <main>
           <CookingMode
             recipe={activeCookingRecipe}
+            initialServings={cookingServings ?? undefined}
             shoppingList={shoppingList}
             onAddMissingToShoppingList={handleAddMissingToShoppingList}
-            onExit={() => setSelectedRecipe(null)}
+            onExit={() => {
+              setSelectedRecipe(null);
+              setCookingServings(null);
+            }}
             s={s}
           />
         </main>
@@ -1087,7 +1096,10 @@ export default function App() {
                       isFavorite={favorites.includes(recipe.id)}
                       onToggleFavorite={handleToggleFavorite}
                       onAddMissingToShoppingList={handleAddMissingToShoppingList}
-                      onSelectRecipe={(r) => setSelectedRecipe(r)}
+                      onSelectRecipe={(r, servings) => {
+                        setSelectedRecipe(r);
+                        setCookingServings(servings);
+                      }}
                       s={s}
                     />
                   ))}

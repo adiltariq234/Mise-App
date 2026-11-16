@@ -38,3 +38,26 @@
     scroll-behavior: auto !important;
   }
 }
+
+@media print {
+  /* Print a recipe / shopping list / meal plan cleanly: hide the header,
+     footer, sidebar, share banner, all buttons and input controls. The
+     visible view prints as-is — cooking mode prints one recipe, the
+     shopping tab prints the list (checkboxes stay visible), the meal
+     planner prints the week. */
+  header,
+  footer,
+  button,
+  select,
+  input[type='text'],
+  input[type='search'],
+  input[type='date'],
+  textarea,
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: #fff;
+  }
+}

@@ -25,6 +25,9 @@ import { getStrings } from '../utils/i18n.ts';
 
 interface CookingModeProps {
   recipe: Recipe;
+  /** Servings the user chose on the recipe card — cooking mode starts here
+   * instead of resetting to the recipe default (QA finding 16 Nov 2026). */
+  initialServings?: number;
   shoppingList: ShoppingListItem[];
   onAddMissingToShoppingList: (
     ingredient: IngredientItem,
@@ -63,13 +66,14 @@ function playTimerChime() {
 
 export function CookingMode({
   recipe,
+  initialServings,
   shoppingList,
   onAddMissingToShoppingList,
   onExit,
   s = getStrings('en'),
 }: CookingModeProps) {
   const [stepIndex, setStepIndex] = useState(0);
-  const [servings, setServings] = useState(recipe.servings);
+  const [servings, setServings] = useState(initialServings ?? recipe.servings);
   // Amounts scale with the chosen servings; unscalable amounts are shown
   // as written (see utils/amounts.ts).
   const scaled = useMemo(() => scaleRecipe(recipe, servings), [recipe, servings]);
