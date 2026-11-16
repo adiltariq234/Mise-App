@@ -662,6 +662,7 @@ export default function App() {
         imageBase64: prepared.dataUrl,
         mimeType: prepared.mimeType,
         dietaryRestrictions: filters.dietary,
+        lang,
       },
       thumbnail,
     );
@@ -681,6 +682,7 @@ export default function App() {
         imageBase64: prepared.dataUrl,
         mimeType: prepared.mimeType,
         dietaryRestrictions: filters.dietary,
+        lang,
       },
       thumbnail,
     );
@@ -693,6 +695,7 @@ export default function App() {
       {
         ingredients: fridgeIngredientNames(fridgeIngredients),
         dietaryRestrictions: filters.dietary,
+        lang,
       },
       lastScan.current?.thumbnail || null,
     );
@@ -817,6 +820,7 @@ export default function App() {
           <CookingMode
             recipe={activeCookingRecipe}
             initialServings={cookingServings ?? undefined}
+            lang={lang}
             shoppingList={shoppingList}
             onAddMissingToShoppingList={handleAddMissingToShoppingList}
             onExit={() => {

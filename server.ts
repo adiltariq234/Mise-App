@@ -425,6 +425,11 @@ function sanitizeDietaryRestrictions(raw: unknown): string[] {
     .slice(0, MAX_DIETARY_TAGS);
 }
 
+/** Only 'ur' passes through — anything else (including garbage) is English. */
+function sanitizeLang(raw: unknown): 'en' | 'ur' {
+  return raw === 'ur' ? 'ur' : 'en';
+}
+
 function sanitizeIngredientNames(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   return raw
@@ -481,13 +486,32 @@ export function validateImageInput(input: unknown, mimeHint: unknown): { base64:
 const SYSTEM_INSTRUCTION =
   'You are Mise, an expert culinary assistant. Accurately identify ingredients from fridge photos and craft realistic, appetizing recipes with reliable calorie estimates, prep times, and hands-free step-by-step instructions. Only use these exact dietaryTags values: Vegetarian, Vegan, Keto, Gluten-Free, Dairy-Free, High-Protein.';
 
+/**
+ * Added to the recipe prompt when the UI language is Urdu. The recipe
+ * text itself must be Urdu (so read-aloud can speak it), but the parts
+ * the app parses stay machine-readable: Western digits 0-9 for every
+ * number (the serving-size parser only reads ASCII digits, and Urdu-Indic
+ * digits ۰-۹ would silently make amounts unscalable), quantities written
+ * as numerals never words, JSON field names / difficulty / dietaryTags in
+ * English, and detectedIngredients in English (they are the data matched
+ * against the fridge inventory).
+ */
+const URDU_RECIPE_INSTRUCTION =
+  'Write the ENTIRE recipe in Urdu (title, description, summary, ingredient names inside each recipe, steps, and tips). ' +
+  'Use Western Arabic numerals 0-9 for ALL numbers (amounts, times, calories, servings, step numbers) — never use Urdu-Indic digits (۰-۹). ' +
+  'Write all quantities as numerals (2, 1.5, 1/2), never as words. ' +
+  'Keep the JSON field names, the difficulty values (Easy/Medium/Hard), the dietaryTags values, and the recipe "id" exactly as specified in English. ' +
+  'Keep detectedIngredients in English.';
+
 async function runFridgeAnalysis(input: {
   imageBase64?: string;
   mimeType?: string;
   dietaryRestrictions?: string[];
+  lang?: string;
 }) {
   const { base64, mime } = validateImageInput(input.imageBase64, input.mimeType);
   const dietary = sanitizeDietaryRestrictions(input.dietaryRestrictions);
+  const lang = sanitizeLang(input.lang);
   const dietInstruction =
     dietary.length > 0
       ? `Prioritize recipes matching these active dietary preferences where possible, while still offering varied options: ${dietary.join(', ')}.`
@@ -499,6 +523,7 @@ async function runFridgeAnalysis(input: {
     '2. Suggest 5 practical, delicious recipes built primarily around these visible ingredients. Include at least 1-2 recipes that need 1-2 common missing essential items (marked inFridge: false, essential: true) so the user can add missing items to a shopping list if desired, alongside recipes ready to cook immediately.',
     '3. Write clear, scannable step-by-step instructions ideal for hands-free read-aloud cooking (include durationMinutes on active cooking/simmering/baking steps when applicable).',
     dietInstruction,
+    ...(lang === 'ur' ? [URDU_RECIPE_INSTRUCTION] : []),
     JSON_SHAPE,
   ].join('\n');
 
@@ -522,7 +547,9 @@ async function runFridgeAnalysis(input: {
     summary:
       typeof parsed.summary === 'string' && parsed.summary.trim()
         ? parsed.summary.trim().slice(0, 500)
-        : 'Ingredients identified from your fridge photo.',
+        : lang === 'ur'
+          ? 'آپ کے فریج کی تصویر سے اجزاء کی شناخت ہو گئی۔'
+          : 'Ingredients identified from your fridge photo.',
     recipes: sanitizeRecipes(Array.isArray(parsed.recipes) ? parsed.recipes : []),
   };
 }
@@ -530,12 +557,14 @@ async function runFridgeAnalysis(input: {
 async function runRecipeSuggestions(input: {
   ingredients?: string[];
   dietaryRestrictions?: string[];
+  lang?: string;
 }) {
   const ingredients = sanitizeIngredientNames(input.ingredients);
   if (ingredients.length === 0) {
     throw new ApiError(400, 'VALIDATION', 'Provide at least one ingredient.');
   }
   const dietary = sanitizeDietaryRestrictions(input.dietaryRestrictions);
+  const lang = sanitizeLang(input.lang);
   const dietInstruction =
     dietary.length > 0
       ? `Focus on recipes matching: ${dietary.join(', ')}.`
@@ -545,6 +574,7 @@ async function runRecipeSuggestions(input: {
     `Available fridge ingredients: ${ingredients.join(', ')}.`,
     dietInstruction,
     'Generate 5 distinct recipes using these ingredients, marking any missing essentials with inFridge: false.',
+    ...(lang === 'ur' ? [URDU_RECIPE_INSTRUCTION] : []),
     JSON_SHAPE,
   ].join('\n');
 
@@ -563,7 +593,9 @@ async function runRecipeSuggestions(input: {
     summary:
       typeof parsed.summary === 'string' && parsed.summary.trim()
         ? parsed.summary.trim().slice(0, 500)
-        : 'Updated recipes based on your fridge inventory.',
+        : lang === 'ur'
+          ? 'آپ کے فریج کے اجزاء کی بنیاد پر تراکیب تازہ کر دی گئیں۔'
+          : 'Updated recipes based on your fridge inventory.',
     recipes: sanitizeRecipes(Array.isArray(parsed.recipes) ? parsed.recipes : []),
   };
 }
@@ -674,6 +706,7 @@ export async function createApp() {
           imageBase64?: string;
           mimeType?: string;
           dietaryRestrictions?: string[];
+          lang?: string;
         };
         // Validate synchronously so bad input gets an immediate 400
         // instead of a job that fails later.
@@ -701,6 +734,7 @@ export async function createApp() {
         const body = (req.body || {}) as {
           ingredients?: string[];
           dietaryRestrictions?: string[];
+          lang?: string;
         };
         // Validate synchronously so an empty list gets an immediate 400.
         if (sanitizeIngredientNames(body.ingredients).length === 0) {

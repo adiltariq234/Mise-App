@@ -51,6 +51,9 @@ export interface UiStrings {
   voiceSpeed: string;
   voice: string;
   systemDefault: string;
+  readStepPrefix: string;
+  readStepShort: string;
+  noUrduVoice: string;
   allSteps: string;
   chefTip: string;
   dishComplete: string;
@@ -188,6 +191,10 @@ const EN: UiStrings = {
   voiceSpeed: 'Voice speed',
   voice: 'Voice',
   systemDefault: 'System default',
+  readStepPrefix: 'Step {n} of {total}.',
+  readStepShort: 'Step {n}.',
+  noUrduVoice:
+    'No Urdu voice is installed on this device — read-aloud will use the system default voice.',
   allSteps: 'All Steps',
   chefTip: 'Chef tip',
   dishComplete: 'Dish complete — enjoy your meal!',
@@ -331,6 +338,10 @@ const UR: UiStrings = {
   voiceSpeed: 'آواز کی رفتار',
   voice: 'آواز',
   systemDefault: 'سسٹم کی پہلے سے طے شدہ آواز',
+  readStepPrefix: 'مرحلہ {n} از {total}۔',
+  readStepShort: 'مرحلہ {n}۔',
+  noUrduVoice:
+    'اس ڈیوائس پر اردو آواز انسٹال نہیں ہے — بلند آواز سے پڑھنا سسٹم کی پہلے سے طے شدہ آواز سے ہوگا۔',
   allSteps: 'تمام مراحل',
   chefTip: 'باورچی کی تجویز',
   dishComplete: 'پکوان تیار ہے — نوش فرمائیں!',

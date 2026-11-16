@@ -165,3 +165,79 @@ test('sanitizeRecipes deep-validates AI output and dedupes ids', () => {
   assert.notEqual(out[0].id, out[1].id); // duplicate id made unique
   assert.equal(out[1].difficulty, 'Easy');
 });
+
+/**
+ * Start a test server, capture the exact request it sends to OpenRouter,
+ * and answer with a canned valid reply. Non-OpenRouter fetches (the
+ * test client itself) pass through to the real fetch.
+ */
+async function withCapturedOpenRouter(
+  body: unknown,
+  run: (captured: Array<Record<string, unknown>>) => Promise<void>,
+) {
+  const { server, base } = await startTestServer();
+  const originalFetch = globalThis.fetch;
+  // callOpenRouter reads the key before fetching — give it a dummy so
+  // the request reaches the stub (the key is never sent anywhere real).
+  const hadKey = 'OPENROUTER_API_KEY' in process.env;
+  const prevKey = process.env.OPENROUTER_API_KEY;
+  process.env.OPENROUTER_API_KEY = 'test-dummy-key';
+  const captured: Array<Record<string, unknown>> = [];
+  globalThis.fetch = (async (url: unknown, init?: { body?: unknown }) => {
+    if (typeof url === 'string' && url.includes('openrouter.ai')) {
+      captured.push(JSON.parse(String((init as { body?: string }).body ?? '{}')));
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  detectedIngredients: ['Chicken'],
+                  summary: 'Canned summary.',
+                  recipes: [],
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+    return originalFetch(url as string, init as never);
+  }) as typeof fetch;
+  try {
+    const { res } = await postJson(base, '/api/suggest-recipes', body);
+    assert.equal(res.status, 200);
+    await run(captured);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (hadKey) process.env.OPENROUTER_API_KEY = prevKey;
+    else delete process.env.OPENROUTER_API_KEY;
+    server.close();
+  }
+}
+
+function openRouterPromptText(captured: Array<Record<string, unknown>>): string {
+  assert.equal(captured.length, 1);
+  const messages = captured[0].messages as Array<{ content: unknown }>;
+  return messages
+    .map((m) => (typeof m.content === 'string' ? m.content : ''))
+    .join('\n');
+}
+
+test('POST /api/suggest-recipes with lang ur asks for Urdu recipes with Western digits', async () => {
+  await withCapturedOpenRouter({ ingredients: ['Chicken'], lang: 'ur' }, async (captured) => {
+    const prompt = openRouterPromptText(captured);
+    assert.match(prompt, /ENTIRE recipe in Urdu/);
+    assert.match(prompt, /Western Arabic numerals 0-9/);
+    assert.match(prompt, /never use Urdu-Indic digits/);
+    assert.match(prompt, /Keep detectedIngredients in English/);
+  });
+});
+
+test('POST /api/suggest-recipes without lang sends no Urdu instruction', async () => {
+  await withCapturedOpenRouter({ ingredients: ['Chicken'] }, async (captured) => {
+    const prompt = openRouterPromptText(captured);
+    assert.doesNotMatch(prompt, /Urdu/);
+  });
+});

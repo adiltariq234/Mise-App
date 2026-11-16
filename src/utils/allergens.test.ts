@@ -43,3 +43,29 @@ test('recipeAllergens deduplicates across ingredients', () => {
   } as Recipe;
   assert.deepEqual(recipeAllergens(recipe), ['Egg', 'Milk']);
 });
+
+test('detectAllergens flags Urdu ingredient names (Urdu recipes)', () => {
+  assert.deepEqual(detectAllergens('دودھ'), ['Milk']);
+  assert.deepEqual(detectAllergens('دہی'), ['Milk']);
+  assert.deepEqual(detectAllergens('مکھن'), ['Milk']);
+  assert.deepEqual(detectAllergens('انڈے'), ['Egg']);
+  assert.deepEqual(detectAllergens('گندم کا آٹا'), ['Wheat']);
+  assert.deepEqual(detectAllergens('مونگ پھلی'), ['Peanut']);
+  assert.deepEqual(detectAllergens('بادام'), ['Tree Nut']);
+  assert.deepEqual(detectAllergens('مچھلی'), ['Fish']);
+  assert.deepEqual(detectAllergens('جھینگا'), ['Shellfish']);
+  assert.deepEqual(detectAllergens('تل'), ['Sesame']);
+  assert.deepEqual(detectAllergens('سرسوں'), ['Mustard']);
+  assert.deepEqual(detectAllergens('سیلری'), ['Celery']);
+  assert.deepEqual(detectAllergens('سویا ساس'), ['Soy']);
+});
+
+test('detectAllergens does not false-positive on Urdu lookalikes', () => {
+  // "مونگ کی دال" is moong dal, not peanut — the phrase match needs
+  // the full "مونگ پھلی", not the single token "مونگ".
+  assert.deepEqual(detectAllergens('مونگ کی دال'), []);
+  assert.deepEqual(detectAllergens('چکن تکہ'), []);
+  // Almond milk in Urdu: tree nut yes, dairy no.
+  assert.deepEqual(detectAllergens('بادام کا دودھ'), ['Tree Nut']);
+  assert.deepEqual(detectAllergens('مونگ پھلی کا مکھن'), ['Peanut']);
+});

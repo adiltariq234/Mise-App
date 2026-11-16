@@ -20,14 +20,21 @@ import {
 import { scaleRecipe } from '../utils/amounts.ts';
 import { recipeAllergens } from '../utils/allergens.ts';
 import { ServingsScaler } from './ServingsScaler';
-import type { UiStrings } from '../utils/i18n.ts';
-import { getStrings } from '../utils/i18n.ts';
+import type { Language, UiStrings } from '../utils/i18n.ts';
+import { fmt, getStrings } from '../utils/i18n.ts';
+import {
+  hasUrduVoice,
+  pickVoiceForLang,
+  sortVoicesForLang,
+} from '../utils/voice.ts';
 
 interface CookingModeProps {
   recipe: Recipe;
   /** Servings the user chose on the recipe card — cooking mode starts here
    * instead of resetting to the recipe default (QA finding 16 Nov 2026). */
   initialServings?: number;
+  /** UI language — drives Urdu voice selection and spoken step text. */
+  lang?: Language;
   shoppingList: ShoppingListItem[];
   onAddMissingToShoppingList: (
     ingredient: IngredientItem,
@@ -67,6 +74,7 @@ function playTimerChime() {
 export function CookingMode({
   recipe,
   initialServings,
+  lang = 'en',
   shoppingList,
   onAddMissingToShoppingList,
   onExit,
@@ -102,6 +110,29 @@ export function CookingMode({
 
   const speechSupported =
     typeof window !== 'undefined' && 'speechSynthesis' in window;
+
+  const isUrdu = lang === 'ur';
+
+  // Voice read-aloud should use: an explicitly picked voice first, then
+  // an Urdu voice in Urdu mode, else the browser default (undefined).
+  // In English this is exactly the old behaviour (saved voice or default).
+  const activeVoice = useMemo(
+    () => pickVoiceForLang(voices, lang, voiceURI),
+    [voices, lang, voiceURI],
+  );
+  // Picker order: Urdu voices first in Urdu mode, browser order otherwise.
+  const sortedVoices = useMemo(
+    () => sortVoicesForLang(voices, lang),
+    [voices, lang],
+  );
+  // Honest note when Urdu is on but this device has no Urdu voice and
+  // nothing was explicitly picked — read-aloud falls back to the default.
+  const showNoUrduVoiceNote =
+    isUrdu &&
+    speechSupported &&
+    voices.length > 0 &&
+    !hasUrduVoice(voices) &&
+    !activeVoice;
 
   // Load available voices (they arrive asynchronously in most browsers).
   useEffect(() => {
@@ -142,15 +173,27 @@ export function CookingMode({
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(textToSpeak);
       utterance.rate = rate;
-      const voice = voices.find((v) => v.voiceURI === voiceURI);
-      if (voice) utterance.voice = voice;
+      if (activeVoice) utterance.voice = activeVoice;
+      // Only set the language in Urdu mode — in English the utterance
+      // keeps the old behaviour (no lang set, voice's own language).
+      if (lang === 'ur') utterance.lang = 'ur-PK';
       utterance.onstart = () => setIsSpeaking(true);
       utterance.onend = () => setIsSpeaking(false);
       utterance.onerror = () => setIsSpeaking(false);
       window.speechSynthesis.speak(utterance);
       setIsSpeaking(true);
     },
-    [speechSupported, voices, voiceURI],
+    [speechSupported, activeVoice, lang],
+  );
+
+  // Spoken step text in the UI language. English output is byte-identical
+  // to the old hardcoded strings ("Step 2 of 5. ..." / "Step 2. ...").
+  const spokenStepText = useCallback(
+    (stepNumber: number, total: number, instruction: string, tip?: string) =>
+      `${fmt(s.readStepPrefix, { n: stepNumber, total })} ${instruction}${
+        tip ? ` ${s.chefTip}: ${tip}` : ''
+      }`,
+    [s],
   );
 
   // Reset timer when changing steps
@@ -164,10 +207,15 @@ export function CookingMode({
   // Auto-read when step changes if autoRead is active
   useEffect(() => {
     if (autoRead) {
-      const fullText = `Step ${currentStep.stepNumber} of ${steps.length}. ${currentStep.instruction}${
-        currentStep.tip ? ` Chef tip: ${currentStep.tip}` : ''
-      }`;
-      speakStep(fullText, speechRate);
+      speakStep(
+        spokenStepText(
+          currentStep.stepNumber,
+          steps.length,
+          currentStep.instruction,
+          currentStep.tip,
+        ),
+        speechRate,
+      );
     } else {
       stopSpeech();
     }
@@ -187,6 +235,7 @@ export function CookingMode({
     speakStep,
     stopSpeech,
     speechSupported,
+    spokenStepText,
   ]);
 
   // Countdown tick
@@ -238,7 +287,7 @@ export function CookingMode({
         if (isSpeaking) {
           stopSpeech();
         } else {
-          const text = `Step ${currentStep.stepNumber}. ${currentStep.instruction}`;
+          const text = `${fmt(s.readStepShort, { n: currentStep.stepNumber })} ${currentStep.instruction}`;
           speakStep(text, speechRate);
         }
       }
@@ -254,6 +303,7 @@ export function CookingMode({
     currentStep.stepNumber,
     currentStep.instruction,
     speechRate,
+    s,
   ]);
 
   const progressPct = Math.round(((stepIndex + 1) / steps.length) * 100);
@@ -326,10 +376,15 @@ export function CookingMode({
                   if (isSpeaking) {
                     stopSpeech();
                   } else {
-                    const text = `Step ${currentStep.stepNumber} of ${steps.length}. ${currentStep.instruction}${
-                      currentStep.tip ? ` Chef tip: ${currentStep.tip}` : ''
-                    }`;
-                    speakStep(text, speechRate);
+                    speakStep(
+                      spokenStepText(
+                        currentStep.stepNumber,
+                        steps.length,
+                        currentStep.instruction,
+                        currentStep.tip,
+                      ),
+                      speechRate,
+                    );
                   }
                 }}
                 className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors whitespace-nowrap ${
@@ -367,7 +422,7 @@ export function CookingMode({
                     className="max-w-44 rounded-md border border-slate-300 bg-white px-1.5 py-1 text-sm focus:border-emerald-700 focus:outline-none"
                   >
                     <option value="">{s.systemDefault}</option>
-                    {voices.map((v) => (
+                    {sortedVoices.map((v) => (
                       <option key={v.voiceURI} value={v.voiceURI}>
                         {v.name} ({v.lang})
                       </option>
@@ -378,6 +433,12 @@ export function CookingMode({
                 <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
                   No voices installed in this browser — read-aloud uses the
                   system default voice.
+                </span>
+              ) : null}
+
+              {showNoUrduVoiceNote ? (
+                <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                  {s.noUrduVoice}
                 </span>
               ) : null}
             </div>
