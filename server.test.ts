@@ -241,3 +241,44 @@ test('POST /api/suggest-recipes without lang sends no Urdu instruction', async (
     assert.doesNotMatch(prompt, /Urdu/);
   });
 });
+
+test('GET /api/auth/me without a token returns 401 UNAUTHENTICATED', async () => {
+  const { server, base } = await startTestServer();
+  try {
+    const res = await fetch(`${base}/api/auth/me`);
+    assert.equal(res.status, 401);
+    const body = (await res.json()) as { code?: string };
+    assert.equal(body.code, 'UNAUTHENTICATED');
+  } finally {
+    server.close();
+  }
+});
+
+test('GET /api/auth/me with an invalid token returns 401, not a 500', async () => {
+  const { server, base } = await startTestServer();
+  try {
+    // No Supabase admin client is configured in the test env, so any
+    // token must fail closed as unauthenticated.
+    const res = await fetch(`${base}/api/auth/me`, {
+      headers: { Authorization: 'Bearer not-a-real-token' },
+    });
+    assert.equal(res.status, 401);
+    const body = (await res.json()) as { code?: string };
+    assert.equal(body.code, 'UNAUTHENTICATED');
+  } finally {
+    server.close();
+  }
+});
+
+test('GET /api/health reports whether auth is configured', async () => {
+  const { server, base } = await startTestServer();
+  try {
+    const res = await fetch(`${base}/api/health`);
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { auth?: { configured?: boolean } };
+    // No Supabase env vars in the test env: configured must be false.
+    assert.equal(body.auth?.configured, false);
+  } finally {
+    server.close();
+  }
+});

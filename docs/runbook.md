@@ -21,6 +21,9 @@ Last updated: 15 November 2026
 | `RATE_LIMIT_RECIPES_PER_HOUR` | No | Default 20. |
 | `UPSTASH_REDIS_REST_URL` | No — recommended | Upstash Redis REST URL. Enables shared rate limiting + async AI jobs. |
 | `UPSTASH_REDIS_REST_TOKEN` | No — recommended | Upstash Redis REST token. |
+| `VITE_SUPABASE_URL` | No | Supabase project URL (public). Without it + the anon key, the app is guest-only and the sign-in panel does not appear. |
+| `VITE_SUPABASE_ANON_KEY` | No | Supabase publishable key (public by design). Set for Production + Preview. |
+| `SUPABASE_SERVICE_ROLE_KEY` | No — server-only | Lets the server verify user tokens (`GET /api/auth/me`). Never `VITE_`-prefixed, never committed, never logged. |
 
 ## Setting up Upstash Redis (optional, free tier)
 
@@ -35,6 +38,31 @@ Last updated: 15 November 2026
 5. Without these variables the app still works: rate limiting falls back
    to in-memory (per-instance, best-effort) and AI calls run
    synchronously.
+
+## Setting up login & database (Supabase, one time)
+
+Project: **"mise"** — https://woczqvbzrxekfckhfyui.supabase.co, region
+ap-south-1 (Mumbai), Free Plan. Env vars are already set in Vercel
+(Production + Preview).
+
+1. **Apply the migration:** Supabase dashboard → SQL Editor → paste
+   `supabase/migrations/0001_mise_core.sql` → Run. It creates
+   `profiles`, `fridge_profiles`, `scans`, `favorites`,
+   `shopping_items`, `meal_plans`, all with row-level security (a user
+   can only touch their own rows). Until this runs, sign-in works but
+   cloud sync fails closed — the app keeps the local copy and shows a
+   sync error instead of losing data.
+2. **Enable Google sign-in:** Authentication → Providers → Google →
+   enable with the OAuth client id/secret. Email sign-in is on by
+   default. Set Site URL to https://mise-app-olive.vercel.app/ so
+   confirmation links return to the app.
+3. **Verify:** redeploy, then `GET /api/health` should report
+   `"auth":{"configured":true}`. Sign in on the live site (sidebar
+   panel), upload local data once, and confirm the rows appear in
+   Supabase → Table Editor.
+4. **If sync fails for a user:** check the tables exist (step 1) and
+   the RLS policies are present; the app never deletes local data, so
+   nothing is lost — fix the cause and the next sign-in re-syncs.
 
 ## Rotating the OpenRouter key
 

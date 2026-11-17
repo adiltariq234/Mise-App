@@ -21,6 +21,7 @@ Live: https://mise-app-olive.vercel.app/
 - **Urdu UI toggle** — the main interface (navigation, headings, buttons, labels) switches between English and Urdu from the header; the choice persists. Recipe text, error messages and legal pages stay in English for now.
 - **PWA basics** — web manifest + service worker: the app is installable and opens offline (app shell cached; fridge, shopping list, meal plan and favourites all live in localStorage). API calls are never cached — AI features need a connection.
 - **Printing** — Print buttons on cooking mode, the shopping list and the meal planner; the print stylesheet hides the header, sidebar, buttons and form controls so only the content prints.
+- **Login & account sync (Supabase)** — optional Google or email sign-in (sidebar panel). Signed-in users get their fridges, scans, recipes, favourites, shopping list and meal plan saved to their Supabase account and synced across devices; first sign-in offers a one-time upload of the local data (the local copy is kept either way). Guests keep using localStorage exactly as before — sign-in is never a gate.
 - **Cooking mode** — step-by-step hands-free cooking with a step timer (start / pause / resume / reset), read-aloud text-to-speech with voice selection and speed control, and a friendly message when the browser does not support speech.
 - **Shopping list** — add/edit/delete items, check off, clear checked, copy/share (grouped by category), persisted across reloads.
 - **Privacy & legal** — Privacy Policy and Terms in the app, plus an AI image-processing disclosure and consent notice on the scanner. Photos are sent to OpenRouter and its model provider; they are not stored on Mise's server.
@@ -49,6 +50,20 @@ See `.env.example` for the full list. The important ones:
 | `ALLOWED_ORIGINS` | Optional. Extra CORS origins (empty = same-origin only). |
 | `RATE_LIMIT_SCANS_PER_HOUR` / `RATE_LIMIT_RECIPES_PER_HOUR` | Optional. Defaults 10 / 20. |
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Optional but recommended. Enables shared rate limiting and async AI jobs (202 + polling). Without them the app still works with in-memory rate limiting and synchronous AI calls. |
+| `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | Optional. Supabase project URL + publishable key (public by design). Without them the app works as a guest and the sign-in panel does not appear. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Optional, server-only. Lets the server verify user tokens (`GET /api/auth/me`). Never give it a `VITE_` prefix, never commit it, never log it. |
+
+## Login & database (Supabase)
+
+The Supabase project is **"mise"** (https://woczqvbzrxekfckhfyui.supabase.co, region ap-south-1, Free Plan). Auth is Google + email (Supabase Auth); the database tables live in `supabase/migrations/0001_mise_core.sql`.
+
+**One-time setup (Adil, in the Supabase dashboard):**
+
+1. SQL Editor → paste `supabase/migrations/0001_mise_core.sql` → Run. This creates `profiles`, `fridge_profiles`, `scans`, `favorites`, `shopping_items`, `meal_plans` — all with row-level security so a user can only read/write their own rows.
+2. Authentication → Providers → enable **Google** (add the OAuth client id/secret) — email sign-in is on by default. Set the Site URL to https://mise-app-olive.vercel.app/ so confirmation links land back in the app.
+3. Redeploy (env vars are already set in Vercel for Production + Preview).
+
+**How sync works:** a signed-in user sees an "Upload my data" prompt once; after that, every change syncs to their account (debounced ~1 s) and a fresh sign-in loads the account copy. If local work is newer than the account copy (guest use while signed out), the app asks before overwriting it. Guests never see sign-in and lose nothing. `GET /api/health` reports `auth.configured`; `GET /api/auth/me` (Bearer token) verifies a session server-side.
 
 ## Async AI jobs
 

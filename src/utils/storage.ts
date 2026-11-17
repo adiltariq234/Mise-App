@@ -52,6 +52,8 @@ export const STORAGE_KEYS = {
   scanHistory: 'mise_scan_history_v1',
   favorites: 'mise_favorites_v1',
   ttsVoice: 'mise_tts_voice_v1',
+  /** User id whose local data was uploaded to their account once. */
+  cloudSynced: 'mise_cloud_synced_v1',
 } as const;
 
 export const STORAGE_VERSIONS = {
@@ -65,4 +67,5 @@ export const STORAGE_VERSIONS = {
   scanHistory: 1,
   favorites: 1,
   ttsVoice: 1,
+  cloudSynced: 1,
 } as const;

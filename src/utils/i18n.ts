@@ -148,6 +148,36 @@ export interface UiStrings {
   generateRecipes: string;
   hideFilters: string;
   showFilters: string;
+  // Auth (Supabase login + account sync)
+  signIn: string;
+  signUp: string;
+  signOut: string;
+  signInWithGoogle: string;
+  signInWithEmail: string;
+  createAccount: string;
+  emailAddress: string;
+  password: string;
+  authTitle: string;
+  authIntro: string;
+  authSignedInAs: string;
+  authGuestNote: string;
+  authUploadPrompt: string;
+  authUpload: string;
+  authKeepLocal: string;
+  authSyncing: string;
+  authSynced: string;
+  authSyncError: string;
+  authNotConfigured: string;
+  authInvalidCredentials: string;
+  authEmailExists: string;
+  authPasswordTooShort: string;
+  authInvalidEmail: string;
+  authEmailNotConfirmed: string;
+  authErrorGeneric: string;
+  authConfirmEmail: string;
+  authOrDivider: string;
+  authHaveAccount: string;
+  authNeedAccount: string;
 }
 
 const EN: UiStrings = {
@@ -295,6 +325,35 @@ const EN: UiStrings = {
   generateRecipes: 'Generate Matching Recipes',
   hideFilters: 'Hide Filters & Ingredients',
   showFilters: 'Dietary Filters & Fridge',
+  signIn: 'Sign in',
+  signUp: 'Create account',
+  signOut: 'Sign out',
+  signInWithGoogle: 'Continue with Google',
+  signInWithEmail: 'Sign in with email',
+  createAccount: 'Create account',
+  emailAddress: 'Email address',
+  password: 'Password',
+  authTitle: 'Save your fridge & recipes',
+  authIntro: 'Sign in to keep your scans, recipes and shopping list on all your devices.',
+  authSignedInAs: 'Signed in as {email}',
+  authGuestNote: 'You are browsing as a guest — everything is saved only on this device.',
+  authUploadPrompt: 'Upload your local fridge, recipes and lists to your account?',
+  authUpload: 'Upload my data',
+  authKeepLocal: 'Keep it on this device',
+  authSyncing: 'Saving to your account…',
+  authSynced: 'Saved to your account',
+  authSyncError: 'Could not save to your account. Your data is still safe on this device.',
+  authNotConfigured: 'Sign-in is not set up yet.',
+  authInvalidCredentials: 'Wrong email or password. Please try again.',
+  authEmailExists: 'An account with this email already exists. Try signing in instead.',
+  authPasswordTooShort: 'Password must be at least 6 characters.',
+  authInvalidEmail: 'Please enter a valid email address.',
+  authEmailNotConfirmed: 'Your email is not confirmed yet. Please check your inbox.',
+  authErrorGeneric: 'Something went wrong. Please try again.',
+  authConfirmEmail: 'Check your inbox — we sent a confirmation link to {email}.',
+  authOrDivider: 'or',
+  authHaveAccount: 'Already have an account? Sign in',
+  authNeedAccount: 'No account yet? Create one',
 };
 
 const UR: UiStrings = {
@@ -442,6 +501,35 @@ const UR: UiStrings = {
   generateRecipes: 'مماثل تراکیب بنائیں',
   hideFilters: 'فلٹرز اور اجزاء چھپائیں',
   showFilters: 'غذائی فلٹرز اور فریج',
+  signIn: 'سائن ان کریں',
+  signUp: 'اکاؤنٹ بنائیں',
+  signOut: 'سائن آؤٹ کریں',
+  signInWithGoogle: 'Google سے جاری رکھیں',
+  signInWithEmail: 'ای میل سے سائن ان کریں',
+  createAccount: 'اکاؤنٹ بنائیں',
+  emailAddress: 'ای میل ایڈریس',
+  password: 'پاس ورڈ',
+  authTitle: 'اپنا فریج اور تراکیب محفوظ کریں',
+  authIntro: 'اپنی اسکینز، تراکیب اور خریداری کی فہرست تمام آلات پر رکھنے کے لیے سائن ان کریں۔',
+  authSignedInAs: '{email} کے طور پر سائن ان ہیں',
+  authGuestNote: 'آپ بطور مہمان استعمال کر رہے ہیں — سب کچھ صرف اسی آلے پر محفوظ ہے۔',
+  authUploadPrompt: 'اپنا مقامی فریج، تراکیب اور فہرستیں اپنے اکاؤنٹ پر اپ لوڈ کریں؟',
+  authUpload: 'میرا ڈیٹا اپ لوڈ کریں',
+  authKeepLocal: 'اسی آلے پر رکھیں',
+  authSyncing: 'آپ کے اکاؤنٹ میں محفوظ ہو رہا ہے…',
+  authSynced: 'آپ کے اکاؤنٹ میں محفوظ ہو گیا',
+  authSyncError: 'آپ کے اکاؤنٹ میں محفوظ نہیں ہو سکا۔ آپ کا ڈیٹا اسی آلے پر محفوظ ہے۔',
+  authNotConfigured: 'سائن ان ابھی سیٹ اپ نہیں ہوا۔',
+  authInvalidCredentials: 'ای میل یا پاس ورڈ غلط ہے۔ دوبارہ کوشش کریں۔',
+  authEmailExists: 'اس ای میل سے اکاؤنٹ پہلے سے موجود ہے۔ سائن ان کرنے کی کوشش کریں۔',
+  authPasswordTooShort: 'پاس ورڈ کم از کم 6 حروف کا ہونا چاہیے۔',
+  authInvalidEmail: 'براہ کرم درست ای میل ایڈریس لکھیں۔',
+  authEmailNotConfirmed: 'آپ کا ای میل ابھی تصدیق شدہ نہیں ہے۔ اپنا ان باکس چیک کریں۔',
+  authErrorGeneric: 'کچھ غلط ہو گیا۔ دوبارہ کوشش کریں۔',
+  authConfirmEmail: 'اپنا ان باکس چیک کریں — {email} پر تصدیقی لنک بھیجا گیا ہے۔',
+  authOrDivider: 'یا',
+  authHaveAccount: 'پہلے سے اکاؤنٹ ہے؟ سائن ان کریں',
+  authNeedAccount: 'ابھی اکاؤنٹ نہیں ہے؟ ایک بنائیں',
 };
 
 export const STRINGS: Record<Language, UiStrings> = { en: EN, ur: UR };

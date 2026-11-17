@@ -11,6 +11,7 @@ import {
   estimateBase64Bytes,
   isAllowedImageMime,
 } from './src/utils/imageValidation.ts';
+import { getSupabaseAdmin, verifyUserToken } from './src/utils/supabaseAdmin.ts';
 import type { Recipe } from './src/types/culinary.ts';
 
 dotenv.config();
@@ -682,7 +683,29 @@ export async function createApp() {
         recipesPerHour: RECIPES_PER_HOUR,
       },
       jobs: { enabled: getRedis() !== null },
+      auth: { configured: getSupabaseAdmin() !== null },
     });
+  });
+
+  // Verify a Supabase access token (browser sends it as
+  // `Authorization: Bearer <token>`). Lets future per-user endpoints
+  // trust the caller's identity; the AI endpoints stay anonymous so
+  // guests can scan without an account.
+  app.get('/api/auth/me', async (req, res) => {
+    const header = req.headers.authorization || '';
+    const token = header.startsWith('Bearer ') ? header.slice('Bearer '.length) : '';
+    if (!token) {
+      res.status(401).json({ error: 'Sign in to continue.', code: 'UNAUTHENTICATED' });
+      return;
+    }
+    const user = await verifyUserToken(token);
+    if (!user) {
+      res
+        .status(401)
+        .json({ error: 'Your session has expired. Please sign in again.', code: 'UNAUTHENTICATED' });
+      return;
+    }
+    res.json({ user });
   });
 
   app.get('/api/jobs/:id', async (req, res) => {

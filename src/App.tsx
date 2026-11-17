@@ -59,6 +59,15 @@ import { clearMeal, planMissingIngredients, setMeal } from './utils/mealPlan.ts'
 import { decodeShare, type SharePayload } from './utils/sharing.ts';
 import { getStrings, fmt, isLanguage, type Language } from './utils/i18n.ts';
 import { WEEK_DAYS } from './types/culinary.ts';
+import { useSupabaseAuth } from './hooks/useAuth.ts';
+import { AuthPanel, type CloudStatus } from './components/AuthPanel.tsx';
+import {
+  getCloudStore,
+  getSyncedUserId,
+  markSynced,
+  type CloudStore,
+  type LocalUserData,
+} from './utils/cloudSync.ts';
 
 const DEFAULT_FILTERS: FilterState = {
   dietary: [],
@@ -155,6 +164,19 @@ export default function App() {
   const [pendingShare, setPendingShare] = useState<SharePayload | null>(null);
   const [shareStatus, setShareStatus] = useState<string | null>(null);
 
+  // --- Login + account sync (Supabase) ---------------------------------
+  // Guest mode is the default: when Supabase is not configured the
+  // hook reports configured=false, the panel renders nothing, and all
+  // of this is inert.
+  const auth = useSupabaseAuth();
+  const cloudStore: CloudStore = useMemo(() => getCloudStore(), []);
+  const [cloudStatus, setCloudStatus] = useState<CloudStatus>('off');
+  const [showUploadPrompt, setShowUploadPrompt] = useState(false);
+  // Cloud data loaded while the user had newer local work: held here
+  // until they choose Upload (local wins) or Keep local (cloud applies).
+  const pendingCloudDataRef = useRef<LocalUserData | null>(null);
+  const prevUserIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     try {
       const hash = window.location.hash;
@@ -208,6 +230,129 @@ export default function App() {
       // Ignore (non-browser runtimes)
     }
   }, [lang]);
+
+  // --- Account sync ------------------------------------------------------
+  /** Current state as one snapshot, in the shapes the cloud stores. */
+  const snapshotLocalData = (): LocalUserData => ({
+    email: auth.user?.email ?? null,
+    fridgeProfiles,
+    activeFridgeId: activeFridgeIdResolved,
+    lastScan: lastScan.current,
+    scanHistory,
+    favorites,
+    shoppingList,
+    mealPlan,
+  });
+
+  /** Replace local state with data loaded from the user's account. */
+  const applyCloudData = (data: LocalUserData) => {
+    setFridgeProfiles(data.fridgeProfiles);
+    setActiveFridgeId(data.activeFridgeId || data.fridgeProfiles[0]?.id || '');
+    setScanHistory(data.scanHistory);
+    setFavorites(data.favorites);
+    setShoppingList(data.shoppingList);
+    setMealPlan(data.mealPlan);
+    if (data.lastScan) {
+      const scan = data.lastScan;
+      lastScan.current = scan;
+      saveStored(STORAGE_KEYS.lastScan, STORAGE_VERSIONS.lastScan, scan);
+      setRawRecipes((prev) => (scan.recipes.length > 0 ? scan.recipes : prev));
+      setSummaryText(scan.summary);
+      setPreviewImageUrl((prev) => scan.thumbnail || prev);
+      setIsDemo(false);
+    }
+  };
+
+  /** One-time upload of the local data to the signed-in account. */
+  const handleUploadLocalData = async () => {
+    if (!auth.user) return;
+    setCloudStatus('loading');
+    try {
+      await cloudStore.uploadAll(auth.user.id, snapshotLocalData());
+      markSynced(auth.user.id);
+      pendingCloudDataRef.current = null;
+      setCloudStatus('synced');
+      setShowUploadPrompt(false);
+    } catch {
+      // Local data untouched; the prompt stays open to retry.
+      setCloudStatus('error');
+    }
+  };
+
+  /** "Keep it on this device": apply held cloud data if there is any. */
+  const handleDismissUpload = () => {
+    const pending = pendingCloudDataRef.current;
+    pendingCloudDataRef.current = null;
+    setShowUploadPrompt(false);
+    if (pending) {
+      applyCloudData(pending);
+      setCloudStatus('synced');
+    }
+  };
+
+  // On sign-in: if this browser already uploaded this user's data
+  // once, load the account copy; otherwise offer the one-time upload.
+  // If the local copy has a NEWER scan than the account copy (guest
+  // work done while signed out), ask first instead of overwriting it.
+  useEffect(() => {
+    const userId = auth.user?.id ?? null;
+    const prevUserId = prevUserIdRef.current;
+    prevUserIdRef.current = userId;
+    if (!userId) {
+      if (prevUserId !== null) setCloudStatus('off');
+      setShowUploadPrompt(false);
+      return;
+    }
+    if (prevUserId === userId) return;
+    if (getSyncedUserId() === userId) {
+      setCloudStatus('loading');
+      void cloudStore
+        .loadAll(userId)
+        .then((data) => {
+          const localNewer =
+            (lastScan.current?.scannedAt ?? 0) > (data.lastScan?.scannedAt ?? 0);
+          if (localNewer) {
+            pendingCloudDataRef.current = data;
+            setShowUploadPrompt(true);
+            setCloudStatus('off');
+          } else {
+            applyCloudData(data);
+            setCloudStatus('synced');
+          }
+        })
+        .catch(() => {
+          // Keep local data; the panel shows the sync error.
+          setCloudStatus('error');
+        });
+    } else {
+      setShowUploadPrompt(true);
+      setCloudStatus('off');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.user, cloudStore]);
+
+  // After the account is synced, keep the cloud copy up to date
+  // (debounced — every keystroke must not fire a request).
+  useEffect(() => {
+    const userId = auth.user?.id;
+    if (!userId || cloudStatus !== 'synced') return;
+    const timer = window.setTimeout(() => {
+      void cloudStore.uploadAll(userId, snapshotLocalData()).catch(() => {
+        setCloudStatus('error');
+      });
+    }, 1000);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    fridgeProfiles,
+    activeFridgeIdResolved,
+    favorites,
+    shoppingList,
+    mealPlan,
+    scanHistory,
+    auth.user,
+    cloudStatus,
+  ]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'auto' });
@@ -914,6 +1059,16 @@ export default function App() {
                   mealPlan={mealPlan}
                   onImportShare={handleImportShare}
                   shareStatus={shareStatus}
+                  s={s}
+                />
+              </div>
+              <div className="mt-6">
+                <AuthPanel
+                  auth={auth}
+                  cloudStatus={cloudStatus}
+                  showUploadPrompt={showUploadPrompt}
+                  onUploadLocalData={() => void handleUploadLocalData()}
+                  onDismissUpload={handleDismissUpload}
                   s={s}
                 />
               </div>
