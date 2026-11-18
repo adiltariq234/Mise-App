@@ -103,7 +103,7 @@ export function decodeShare(code: string): DecodeShareResult {
   }
   const bytes = base64UrlToBytes(trimmed);
   if (!bytes) {
-    return { ok: false, error: 'This does not look like a Mise share code.' };
+    return { ok: false, error: 'This does not look like a Fridjo share code.' };
   }
   let parsed: unknown;
   try {
@@ -112,7 +112,7 @@ export function decodeShare(code: string): DecodeShareResult {
     return { ok: false, error: 'This share code could not be read.' };
   }
   if (!isRecord(parsed) || parsed.v !== 1 || parsed.kind !== 'mise-share') {
-    return { ok: false, error: 'This is not a Mise share code.' };
+    return { ok: false, error: 'This is not a Fridjo share code.' };
   }
   // Validate the shapes we will actually import; drop anything malformed.
   if (parsed.fridge !== undefined) {

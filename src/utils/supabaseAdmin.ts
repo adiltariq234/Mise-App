@@ -7,10 +7,10 @@
  * a VITE_ prefix, never log it. The URL may come from SUPABASE_URL or
  * the public VITE_SUPABASE_URL (same value, already set in Vercel).
  *
- * The only server use today is verifying a user's access token
- * (GET /api/auth/me) so future per-user endpoints can trust the
- * caller's identity. The AI endpoints stay anonymous — guests can
- * still scan without an account.
+ * Server uses: verifying a user's access token (GET /api/auth/me and
+ * the /api/admin/* gate) and the admin panel's profile queries
+ * (GET /api/admin/users, POST /api/admin/set-pro in server.ts). The AI
+ * endpoints stay anonymous — guests can still scan without an account.
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 

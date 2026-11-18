@@ -10,9 +10,15 @@ delete process.env.OPENROUTER_API_KEY;
 delete process.env.UPSTASH_REDIS_REST_URL;
 delete process.env.UPSTASH_REDIS_REST_TOKEN;
 
-const { createApp, sanitizeRecipes, validateImageInput } = await import(
-  './server.ts'
-);
+const {
+  createApp,
+  fixDietaryTags,
+  isAdminEmail,
+  listAdminUsers,
+  sanitizeRecipes,
+  setUserPro,
+  validateImageInput,
+} = await import('./server.ts');
 
 async function startTestServer() {
   const app = await createApp();
@@ -166,6 +172,74 @@ test('sanitizeRecipes deep-validates AI output and dedupes ids', () => {
   assert.equal(out[1].difficulty, 'Easy');
 });
 
+test('sanitizeRecipes drops dietary tags contradicted by the recipe ingredients', () => {
+  const out = sanitizeRecipes([
+    {
+      id: 'yogurt-bowl',
+      title: 'Yogurt Bowl',
+      dietaryTags: ['Dairy-Free', 'Vegetarian', 'Gluten-Free'],
+      ingredients: [
+        { name: 'Greek Yogurt', amount: '200 g', essential: true, inFridge: true },
+        { name: 'Honey', amount: '1 tbsp', essential: false, inFridge: true },
+      ],
+      steps: [{ stepNumber: 1, instruction: 'Mix.' }],
+    },
+    {
+      id: 'coconut-curry',
+      title: 'Coconut Curry',
+      dietaryTags: ['Dairy-Free', 'Vegan', 'Gluten-Free'],
+      ingredients: [
+        { name: 'Coconut Milk', amount: '1 can', essential: true, inFridge: true },
+        { name: 'Chickpeas', amount: '1 can', essential: true, inFridge: true },
+      ],
+      steps: [{ stepNumber: 1, instruction: 'Simmer.' }],
+    },
+    {
+      id: 'chicken-rice',
+      title: 'Chicken Rice',
+      dietaryTags: ['Vegan', 'Vegetarian', 'Keto', 'Gluten-Free'],
+      ingredients: [
+        { name: 'Chicken Breast', amount: '200 g', essential: true, inFridge: true },
+        { name: 'Rice', amount: '1 cup', essential: true, inFridge: true },
+      ],
+      steps: [{ stepNumber: 1, instruction: 'Cook.' }],
+    },
+  ]);
+  // Yogurt contradicts Dairy-Free (the Nov 2026 bug); honey does not
+  // contradict Vegetarian or Gluten-Free, so those stay.
+  assert.deepEqual(out[0].dietaryTags, ['Vegetarian', 'Gluten-Free']);
+  // "Coconut Milk" is not dairy and chickpeas are vegan — all tags stay.
+  assert.deepEqual(out[1].dietaryTags, ['Dairy-Free', 'Vegan', 'Gluten-Free']);
+  // Chicken kills Vegan + Vegetarian; rice kills Keto; rice is gluten-free.
+  assert.deepEqual(out[2].dietaryTags, ['Gluten-Free']);
+});
+
+test('fixDietaryTags keeps Dairy-Free for almond milk and peanut butter', () => {
+  assert.deepEqual(
+    fixDietaryTags(['Dairy-Free', 'Vegan'], ['Almond Milk', 'Peanut Butter', 'Oats']),
+    ['Dairy-Free', 'Vegan'],
+  );
+  assert.deepEqual(fixDietaryTags(['Dairy-Free'], ['Butter']), []);
+  assert.deepEqual(fixDietaryTags(['Keto'], ['Almond Flour', 'Eggs']), ['Keto']);
+  assert.deepEqual(fixDietaryTags(['Gluten-Free'], ['Wheat Flour']), []);
+});
+
+test('sanitizeRecipes keeps the English ingredient name (nameEn) when present', () => {
+  const out = sanitizeRecipes([
+    {
+      id: 'urdu-dish',
+      title: 'ٹماٹر کا سالن',
+      ingredients: [
+        { name: 'ٹماٹر', nameEn: 'tomato', amount: '2', essential: true, inFridge: true },
+        { name: 'پیاز', amount: '1', essential: true, inFridge: true },
+      ],
+      steps: [{ stepNumber: 1, instruction: 'پکائیں۔' }],
+    },
+  ]);
+  assert.equal(out[0].ingredients[0].nameEn, 'tomato');
+  assert.equal(out[0].ingredients[1].nameEn, undefined);
+});
+
 /**
  * Start a test server, capture the exact request it sends to OpenRouter,
  * and answer with a canned valid reply. Non-OpenRouter fetches (the
@@ -242,6 +316,25 @@ test('POST /api/suggest-recipes without lang sends no Urdu instruction', async (
   });
 });
 
+test('POST /api/suggest-recipes refresh asks for 3 compact recipes with the tag rule', async () => {
+  await withCapturedOpenRouter({ ingredients: ['Chicken', 'Rice'] }, async (captured) => {
+    const prompt = openRouterPromptText(captured);
+    // The lighter refresh call (Nov 2026): 3 recipes, compact steps,
+    // smaller token budget — the old 5-recipe call timed out ~3 min.
+    assert.match(prompt, /Generate 3 distinct recipes/);
+    assert.match(prompt, /at most 8 steps/);
+    assert.match(prompt, /dietaryTags must be true for EVERY ingredient/);
+    assert.doesNotMatch(prompt, /Generate 5 distinct recipes/);
+  });
+});
+
+test('POST /api/suggest-recipes with lang ur asks for English ingredient names (nameEn)', async () => {
+  await withCapturedOpenRouter({ ingredients: ['Chicken'], lang: 'ur' }, async (captured) => {
+    const prompt = openRouterPromptText(captured);
+    assert.match(prompt, /"nameEn"/);
+  });
+});
+
 test('GET /api/auth/me without a token returns 401 UNAUTHENTICATED', async () => {
   const { server, base } = await startTestServer();
   try {
@@ -261,6 +354,103 @@ test('GET /api/auth/me with an invalid token returns 401, not a 500', async () =
     // token must fail closed as unauthenticated.
     const res = await fetch(`${base}/api/auth/me`, {
       headers: { Authorization: 'Bearer not-a-real-token' },
+    });
+    assert.equal(res.status, 401);
+    const body = (await res.json()) as { code?: string };
+    assert.equal(body.code, 'UNAUTHENTICATED');
+  } finally {
+    server.close();
+  }
+});
+
+test('isAdminEmail compares case-insensitively and fails closed', () => {
+  assert.equal(isAdminEmail('adiltariq0327@gmail.com', 'adiltariq0327@gmail.com'), true);
+  assert.equal(isAdminEmail('AdilTariq0327@Gmail.com', 'adiltariq0327@gmail.com'), true);
+  assert.equal(isAdminEmail('someone-else@gmail.com', 'adiltariq0327@gmail.com'), false);
+  assert.equal(isAdminEmail(undefined, 'adiltariq0327@gmail.com'), false);
+  assert.equal(isAdminEmail('adiltariq0327@gmail.com', null), false);
+});
+
+test('listAdminUsers maps profile rows', async () => {
+  const stub = {
+    from: () => ({
+      select: () => ({
+        order: async () => ({
+          data: [
+            { id: 'u1', email: 'a@example.com', is_pro: true, created_at: '2026-11-18T00:00:00Z' },
+            { id: 'u2', email: 'b@example.com', is_pro: false, created_at: '2026-11-17T00:00:00Z' },
+          ],
+          error: null,
+        }),
+      }),
+    }),
+  };
+  const users = await listAdminUsers(stub as never);
+  assert.deepEqual(users, [
+    { id: 'u1', email: 'a@example.com', is_pro: true, created_at: '2026-11-18T00:00:00Z' },
+    { id: 'u2', email: 'b@example.com', is_pro: false, created_at: '2026-11-17T00:00:00Z' },
+  ]);
+});
+
+test('setUserPro returns the updated row and validates its inputs', async () => {
+  const row = { id: 'u1', email: 'a@example.com', is_pro: true, created_at: '2026-11-18T00:00:00Z' };
+  const stub = {
+    from: () => ({
+      update: () => ({
+        eq: () => ({
+          select: () => ({
+            single: async () => ({ data: row, error: null }),
+          }),
+        }),
+      }),
+    }),
+  };
+  const updated = await setUserPro(stub as never, 'u1', true);
+  assert.deepEqual(updated, row);
+
+  await assert.rejects(
+    () => setUserPro(stub as never, '', true),
+    (e: unknown) => (e as { code?: string }).code === 'VALIDATION',
+  );
+  await assert.rejects(
+    () => setUserPro(stub as never, 'u1', 'yes' as never),
+    (e: unknown) => (e as { code?: string }).code === 'VALIDATION',
+  );
+});
+
+test('GET /api/admin/users without a token returns 401', async () => {
+  const { server, base } = await startTestServer();
+  try {
+    const res = await fetch(`${base}/api/admin/users`);
+    assert.equal(res.status, 401);
+    const body = (await res.json()) as { code?: string };
+    assert.equal(body.code, 'UNAUTHENTICATED');
+  } finally {
+    server.close();
+  }
+});
+
+test('GET /api/admin/users with an invalid token returns 401, not a 500', async () => {
+  const { server, base } = await startTestServer();
+  try {
+    const res = await fetch(`${base}/api/admin/users`, {
+      headers: { Authorization: 'Bearer not-a-real-token' },
+    });
+    assert.equal(res.status, 401);
+    const body = (await res.json()) as { code?: string };
+    assert.equal(body.code, 'UNAUTHENTICATED');
+  } finally {
+    server.close();
+  }
+});
+
+test('POST /api/admin/set-pro without a token returns 401', async () => {
+  const { server, base } = await startTestServer();
+  try {
+    const res = await fetch(`${base}/api/admin/set-pro`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: 'u1', isPro: true }),
     });
     assert.equal(res.status, 401);
     const body = (await res.json()) as { code?: string };

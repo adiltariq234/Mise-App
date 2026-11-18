@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 
 export type LegalView = 'privacy' | 'terms' | null;
 
-const LAST_UPDATED = '15 November 2026';
+const LAST_UPDATED = '18 November 2026';
 
 export function LegalPages({
   view,
@@ -87,23 +87,44 @@ export function LegalPages({
 
             <section>
               <h3 className="font-semibold text-slate-900">
-                Data stored on your device
+                Your data — where it lives
               </h3>
               <p>
-                Fridjo stores the following only in your browser&apos;s local
-                storage, on your own device: your fridge ingredients, your
-                most recent scan and scan history, your favourite recipes, and
-                your shopping list. None of this is sent to a Fridjo server or
-                shared with anyone. Clearing your browser data removes it.
+                If you use Fridjo without signing in, your data stays only in
+                your browser&apos;s local storage, on your own device: your
+                fridge ingredients, your most recent scan and scan history,
+                your favourite recipes, your shopping list, and your meal
+                plan. None of it is sent to a Fridjo server or shared with
+                anyone, and it does not sync between devices. Clearing your
+                browser data removes it.
+              </p>
+              <p>
+                If you sign in, the same data is also saved to your account
+                in our database (Supabase) so it syncs between your devices:
+                your profile, fridge profiles, scans, favourite recipes,
+                shopping items, and meal plans. Each user can only see their
+                own data — access is enforced per user in the database. Your
+                photos are never stored in the database; only a small
+                thumbnail of your most recent scan is kept in your
+                browser&apos;s local storage.
               </p>
             </section>
 
             <section>
               <h3 className="font-semibold text-slate-900">Accounts</h3>
               <p>
-                Fridjo does not currently have user accounts. There is no
-                sign-up, no password, and no profile. Because there are no
-                accounts, your data does not sync between devices.
+                Fridjo has optional user accounts. You can sign in with a
+                Google account or with an email address and password. Signing
+                in is optional — you can keep using Fridjo as a guest without
+                an account, with your data stored only on your device (see
+                above). Accounts are managed by our authentication provider,
+                Supabase: when you sign in with Google, Google shares your
+                name, email address, and profile picture with Fridjo; when you
+                sign up with email, we store your email address and a securely
+                hashed password. Your account stores your profile, fridges,
+                scans, favourites, shopping lists, and meal plans so they sync
+                across your devices. You can sign out at any time from the
+                account panel.
               </p>
             </section>
 

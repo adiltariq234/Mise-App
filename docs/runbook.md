@@ -1,4 +1,4 @@
-# Mise — Operations Runbook
+# Fridjo — Operations Runbook
 
 Last updated: 15 November 2026
 
@@ -23,7 +23,8 @@ Last updated: 15 November 2026
 | `UPSTASH_REDIS_REST_TOKEN` | No — recommended | Upstash Redis REST token. |
 | `VITE_SUPABASE_URL` | No | Supabase project URL (public). Without it + the anon key, the app is guest-only and the sign-in panel does not appear. |
 | `VITE_SUPABASE_ANON_KEY` | No | Supabase publishable key (public by design). Set for Production + Preview. |
-| `SUPABASE_SERVICE_ROLE_KEY` | No — server-only | Lets the server verify user tokens (`GET /api/auth/me`). Never `VITE_`-prefixed, never committed, never logged. |
+| `SUPABASE_SERVICE_ROLE_KEY` | No — server-only | Lets the server verify user tokens (`GET /api/auth/me`) and run admin queries. Never `VITE_`-prefixed, never committed, never logged. |
+| `ADMIN_EMAIL` | No | The ONLY email allowed to use the admin panel (`GET /api/admin/users`, `POST /api/admin/set-pro`). Operator: adiltariq0327@gmail.com. Set in Vercel (Production + Preview) and redeploy; without it every admin request is 403. |
 
 ## Setting up Upstash Redis (optional, free tier)
 
@@ -64,6 +65,23 @@ ap-south-1 (Mumbai), Free Plan. Env vars are already set in Vercel
    the RLS policies are present; the app never deletes local data, so
    nothing is lost — fix the cause and the next sign-in re-syncs.
 
+## Admin panel (users list + Pro toggle)
+
+The operator's account is **adiltariq0327@gmail.com**. Set `ADMIN_EMAIL`
+to that address in Vercel (Production + Preview) and redeploy — without
+it, every admin request is 403.
+
+- The admin panel appears in the sidebar only when the signed-in user's
+  email matches `ADMIN_EMAIL`. Everyone else sees nothing.
+- Endpoints: `GET /api/admin/users` (list profiles: email, is_pro,
+  created_at) and `POST /api/admin/set-pro` with `{ "userId", "isPro" }`
+  (flips `profiles.is_pro`). Both check the caller's Supabase JWT email
+  against `ADMIN_EMAIL` on every call; the client-side visibility check
+  is UI only.
+- A 401 means the token is missing/expired (sign in again); a 403 means
+  the signed-in account is not the admin; a 503 means the server has no
+  Supabase service key configured.
+
 ## Rotating the OpenRouter key
 
 1. Create a new key at https://openrouter.ai/keys.
@@ -93,6 +111,12 @@ ap-south-1 (Mumbai), Free Plan. Env vars are already set in Vercel
    - **Empty/truncated replies** — the model burned its token budget on
      reasoning; the server retries once automatically. If it persists,
      lower `max_tokens` is *not* the fix — switch models.
+   - **"Refresh Recipes with AI" timing out** — the refresh call is
+     deliberately lighter than a fresh scan (3 recipes, compact steps,
+     smaller token budget) and the client polls up to 90 × 3 s (~4.5 min)
+     with a visible check counter. If refreshes still time out, the free
+     model is slow that day — wait and retry; do not buy Vercel Pro for
+     this (the no-cost fix above is the chosen approach, Nov 2026).
 4. If scans fail with `AI_TIMEOUT` frequently, the model is slow; the
    async-job path (Upstash Redis) removes the synchronous wait.
 
@@ -109,8 +133,12 @@ ap-south-1 (Mumbai), Free Plan. Env vars are already set in Vercel
 - **Code:** GitHub (`adiltariq234/Mise-App`) — the source of truth.
 - **Config:** Vercel env vars — no automated backup; keep a private
   note of which variables exist (values never in the repo).
-- **User data:** stored only in each user's browser localStorage; there
-  is no server-side user data to back up.
+- **User data:** guests keep their data only in their own browser
+  localStorage (no server copy). Signed-in users' data also lives in
+  Supabase Postgres (`profiles`, `fridge_profiles`, `scans`,
+  `favorites`, `shopping_items`, `meal_plans`) with per-user
+  row-level security — there is no automated backup; export from
+  Supabase → Table Editor if a copy is ever needed.
 
 ## Support
 

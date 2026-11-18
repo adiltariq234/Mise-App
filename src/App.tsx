@@ -61,6 +61,7 @@ import { getStrings, fmt, isLanguage, type Language } from './utils/i18n.ts';
 import { WEEK_DAYS } from './types/culinary.ts';
 import { useSupabaseAuth } from './hooks/useAuth.ts';
 import { AuthPanel, type CloudStatus } from './components/AuthPanel.tsx';
+import { AdminPanel } from './components/AdminPanel.tsx';
 import {
   getCloudStore,
   getSyncedUserId,
@@ -82,7 +83,11 @@ const DEMO_SUMMARY =
 const MAX_SCAN_HISTORY = 5;
 const SYNC_TIMEOUT_MS = 150_000;
 const POLL_INTERVAL_MS = 3_000;
-const POLL_MAX_ATTEMPTS = 45;
+// 90 polls x 3s ≈ 4.5 min — the lighter 3-recipe refresh call usually
+// lands in 1-2 min, but the free model is slow on bad days; the old
+// 45-poll budget gave up at ~2:15 while the job was still 'processing'
+// (Nov 2026). Job results live 30 min, so no server change is needed.
+const POLL_MAX_ATTEMPTS = 90;
 
 function initialProfiles(): FridgeProfile[] {
   return initialFridgeProfiles(fromScanNames(INITIAL_FRIDGE_INGREDIENTS));
@@ -131,6 +136,9 @@ export default function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [scanStage, setScanStage] = useState<ScanStage>('idle');
   const [scanElapsedSeconds, setScanElapsedSeconds] = useState(0);
+  // Which poll the client is on while waiting for a background job
+  // (shown in the progress box so the wait is honest, not silent).
+  const [pollAttempt, setPollAttempt] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [previousRecipes, setPreviousRecipes] = useState<Recipe[] | null>(null);
   const [previousSummary, setPreviousSummary] = useState<string | null>(null);
@@ -699,6 +707,7 @@ export default function App() {
   const finishAnalysis = () => {
     setIsAnalyzing(false);
     setScanStage('idle');
+    setPollAttempt(0);
     inFlightRef.current = false;
   };
 
@@ -710,7 +719,9 @@ export default function App() {
   /** Poll a 202 async job until it completes, fails, or times out. */
   const pollJob = async (jobId: string, thumbnail: string | null) => {
     setScanStage('polling');
+    setPollAttempt(0);
     for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
+      setPollAttempt(attempt + 1);
       await new Promise((resolve) => {
         pollTimerRef.current = window.setTimeout(resolve, POLL_INTERVAL_MS);
       });
@@ -1072,6 +1083,10 @@ export default function App() {
                   s={s}
                 />
               </div>
+              {/* Admin panel (users + Pro toggle) — renders nothing unless
+                  the signed-in user is the admin; the server re-checks
+                  the caller's token on every admin request. */}
+              <AdminPanel userEmail={auth.user?.email ?? null} s={s} />
             </div>
 
             {/* Main Content: Fridge Scanner + Scrollable Recipe Cards */}
@@ -1082,6 +1097,8 @@ export default function App() {
                 isAnalyzing={isAnalyzing}
                 scanStage={scanStage}
                 scanElapsedSeconds={scanElapsedSeconds}
+                pollAttempt={pollAttempt}
+                pollMaxAttempts={POLL_MAX_ATTEMPTS}
                 errorMessage={errorMessage}
                 isDemo={isDemo}
                 onDismissError={() => setErrorMessage(null)}

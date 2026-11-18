@@ -72,6 +72,31 @@ test('recalculateRecipeAvailability updates inFridge dynamically when fridge con
   assert.equal(counts.missingEssentials[0].name, 'Baby Spinach');
 });
 
+test('recalculateRecipeAvailability matches Urdu ingredients via their English nameEn', () => {
+  const urduRecipes: Recipe[] = [
+    {
+      ...sampleRecipes[0],
+      id: 'ur1',
+      title: 'ٹماٹر کا سالن',
+      ingredients: [
+        { name: 'ٹماٹر', nameEn: 'tomato', amount: '2', essential: true, inFridge: false },
+        { name: 'پیاز', nameEn: 'onion', amount: '1', essential: true, inFridge: false },
+      ],
+    },
+  ];
+  // The English fridge list can never match Urdu names directly — the
+  // English nameEn is what makes the match (Nov 2026 "0 of N" bug).
+  const updated = recalculateRecipeAvailability(urduRecipes, ['Tomato']);
+  assert.equal(updated[0].ingredients[0].inFridge, true);
+  assert.equal(updated[0].ingredients[1].inFridge, false);
+  assert.equal(getIngredientCounts(updated[0]).inFridgeCount, 1);
+});
+
+test('recalculateRecipeAvailability still matches English names when nameEn is absent', () => {
+  const updated = recalculateRecipeAvailability(sampleRecipes, ['Eggs']);
+  assert.equal(updated[0].ingredients[0].inFridge, true);
+});
+
 test('filterAndSortRecipes filters by multiple dietary restrictions, time, difficulty, and search', () => {
   const ketoOnly = filterAndSortRecipes(sampleRecipes, {
     dietary: ['Keto'],

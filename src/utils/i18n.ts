@@ -135,6 +135,7 @@ export interface UiStrings {
   fridgePreviewReady: string;
   analyzingFridge: string;
   scanTakesAboutAMinute: string;
+  pollCheckLine: string;
   addItemLabel: string;
   quantityPlaceholder: string;
   itemPlaceholder: string;
@@ -178,6 +179,17 @@ export interface UiStrings {
   authOrDivider: string;
   authHaveAccount: string;
   authNeedAccount: string;
+  // Admin panel (users list + Pro toggle) — admin account only
+  adminTitle: string;
+  adminIntro: string;
+  adminNoUsers: string;
+  adminLoading: string;
+  adminLoadError: string;
+  adminToggleError: string;
+  adminPro: string;
+  adminFree: string;
+  adminMakePro: string;
+  adminRemovePro: string;
 }
 
 const EN: UiStrings = {
@@ -263,7 +275,7 @@ const EN: UiStrings = {
   weekCalories: 'kcal for the week',
   shareTitle: 'Share fridge & lists',
   shareIntro:
-    'Send a copy of this fridge, your shopping list and your meal plan to family. They import it into their own Mise.',
+    'Send a copy of this fridge, your shopping list and your meal plan to family. They import it into their own Fridjo.',
   shareLocalNote:
     'Local-only sharing: the link contains a copy of your data. Anyone with the link can import it. No live sync — changes after sharing are not shared.',
   copyLink: 'Copy share link',
@@ -311,6 +323,8 @@ const EN: UiStrings = {
   analyzingFridge: 'Analyzing Fridge...',
   scanTakesAboutAMinute:
     'AI analysis usually takes about a minute. Please keep this tab open.',
+  pollCheckLine:
+    'Check {attempt} of {max} — still waiting for the AI. A refresh can take a few minutes; please keep this tab open.',
   addItemLabel: 'Ingredient or grocery item',
   quantityPlaceholder: 'e.g., 200 g',
   itemPlaceholder: 'e.g., Feta Cheese, Fresh Dill, Tahini',
@@ -354,6 +368,16 @@ const EN: UiStrings = {
   authOrDivider: 'or',
   authHaveAccount: 'Already have an account? Sign in',
   authNeedAccount: 'No account yet? Create one',
+  adminTitle: 'Admin — users',
+  adminIntro: 'Signed-in accounts. Turn Pro on or off for each user.',
+  adminNoUsers: 'No signed-in users yet.',
+  adminLoading: 'Loading users…',
+  adminLoadError: 'Could not load users. Please try again.',
+  adminToggleError: 'Could not update Pro status. Please try again.',
+  adminPro: 'Pro',
+  adminFree: 'Free',
+  adminMakePro: 'Make Pro',
+  adminRemovePro: 'Remove Pro',
 };
 
 const UR: UiStrings = {
@@ -439,7 +463,7 @@ const UR: UiStrings = {
   weekCalories: 'ہفتے کی کل کیلوریز',
   shareTitle: 'فریج اور فہرستیں شیئر کریں',
   shareIntro:
-    'اس فریج، خریداری کی فہرست اور کھانے کے منصوبے کی نقل خاندان کو بھیجیں۔ وہ اسے اپنے Mise میں درآمد کر سکتے ہیں۔',
+    'اس فریج، خریداری کی فہرست اور کھانے کے منصوبے کی نقل خاندان کو بھیجیں۔ وہ اسے اپنے Fridjo میں درآمد کر سکتے ہیں۔',
   shareLocalNote:
     'صرف مقامی شیئرنگ: لنک میں آپ کے ڈیٹا کی نقل موجود ہے۔ جس کے پاس لنک ہوگا وہ اسے درآمد کر سکتا ہے۔ براہ راست ہم آہنگی نہیں ہے — شیئر کرنے کے بعد کی تبدیلیاں شیئر نہیں ہوتیں۔',
   copyLink: 'شیئر لنک کاپی کریں',
@@ -487,6 +511,8 @@ const UR: UiStrings = {
   analyzingFridge: 'فریج کا تجزیہ ہو رہا ہے…',
   scanTakesAboutAMinute:
     'AI تجزیے میں عام طور پر تقریباً ایک منٹ لگتا ہے۔ براہ کرم یہ ٹیب کھلا رکھیں۔',
+  pollCheckLine:
+    'چیک {attempt} از {max} — AI کا انتظار جاری ہے۔ تازہ کاری میں چند منٹ لگ سکتے ہیں؛ براہ کرم یہ ٹیب کھلا رکھیں۔',
   addItemLabel: 'اجزاء یا کریانہ کی چیز',
   quantityPlaceholder: 'مثلاً 200 گرام',
   itemPlaceholder: 'مثلاً فیٹا چیز، تازہ دھنیا، تہینی',
@@ -530,6 +556,16 @@ const UR: UiStrings = {
   authOrDivider: 'یا',
   authHaveAccount: 'پہلے سے اکاؤنٹ ہے؟ سائن ان کریں',
   authNeedAccount: 'ابھی اکاؤنٹ نہیں ہے؟ ایک بنائیں',
+  adminTitle: 'ایڈمن — صارفین',
+  adminIntro: 'سائن ان شدہ اکاؤنٹس۔ ہر صارف کے لیے Pro آن یا آف کریں۔',
+  adminNoUsers: 'ابھی کوئی سائن ان شدہ صارف نہیں۔',
+  adminLoading: 'صارفین لوڈ ہو رہے ہیں…',
+  adminLoadError: 'صارفین لوڈ نہیں ہو سکے۔ دوبارہ کوشش کریں۔',
+  adminToggleError: 'Pro کی حیثیت تبدیل نہیں ہو سکی۔ دوبارہ کوشش کریں۔',
+  adminPro: 'Pro',
+  adminFree: 'مفت',
+  adminMakePro: 'Pro بنائیں',
+  adminRemovePro: 'Pro ہٹائیں',
 };
 
 export const STRINGS: Record<Language, UiStrings> = { en: EN, ur: UR };

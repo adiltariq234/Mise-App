@@ -37,7 +37,7 @@ export async function prepareImageFile(file: File): Promise<PreparedImage> {
     return {
       ok: false,
       error:
-        'This photo is in HEIC format (iPhone default), which Mise cannot read yet. Please open it in your Photos app and export or screenshot it as JPG, then upload again.',
+        'This photo is in HEIC format (iPhone default), which Fridjo cannot read yet. Please open it in your Photos app and export or screenshot it as JPG, then upload again.',
     };
   }
   if (!isAllowedImageMime(file.type)) {

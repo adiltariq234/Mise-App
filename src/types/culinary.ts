@@ -38,6 +38,15 @@ export interface FridgeIngredient {
 
 export interface IngredientItem {
   name: string;
+  /**
+   * English ingredient name, returned by the server next to an Urdu
+   * `name` (see URDU_RECIPE_INSTRUCTION in server.ts). The client
+   * matches the fridge inventory against this — Urdu names never match
+   * the English fridge list, so without it Urdu recipes show
+   * "0 of N ingredients in fridge". Absent for English recipes and for
+   * seed recipes; matching falls back to `name` then.
+   */
+  nameEn?: string;
   amount: string;
   essential: boolean;
   inFridge: boolean;

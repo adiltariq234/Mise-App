@@ -12,6 +12,7 @@ import {
   isAllowedImageMime,
 } from './src/utils/imageValidation.ts';
 import { getSupabaseAdmin, verifyUserToken } from './src/utils/supabaseAdmin.ts';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Recipe } from './src/types/culinary.ts';
 
 dotenv.config();
@@ -200,11 +201,20 @@ const JSON_SHAPE = `Return ONLY valid JSON (no markdown, no extra text) with thi
       "calories": 380,
       "servings": 2,
       "dietaryTags": ["Vegetarian" | "Vegan" | "Keto" | "Gluten-Free" | "Dairy-Free" | "High-Protein"],
-      "ingredients": [{"name": "...", "amount": "...", "essential": true, "inFridge": true}],
+      "ingredients": [{"name": "...", "nameEn": "English ingredient name", "amount": "...", "essential": true, "inFridge": true}],
       "steps": [{"stepNumber": 1, "instruction": "...", "tip": "...", "durationMinutes": 5}]
     }
   ]
 }`;
+
+// Refresh ("suggest-recipes") is the slow path: the free model is too slow
+// on the heavy 5-recipe call and the Vercel Hobby function gets terminated
+// mid-call, so refreshes failed after ~3 minutes while fresh scans worked
+// (Nov 2026). The refresh call is deliberately lighter — 3 recipes, compact
+// steps, smaller token budget — while the fresh-scan path keeps its full
+// 5-recipe call. No Vercel Pro spend: this is the no-cost fix.
+const REFRESH_RECIPE_COUNT = 3;
+const REFRESH_MAX_TOKENS = 10_000;
 
 type ChatMessage = {
   role: 'system' | 'user';
@@ -216,7 +226,10 @@ type ChatMessage = {
       >;
 };
 
-async function callOpenRouter(messages: ChatMessage[]): Promise<unknown> {
+async function callOpenRouter(
+  messages: ChatMessage[],
+  opts: { maxTokens?: number } = {},
+): Promise<unknown> {
   const apiKey = getApiKey();
   let lastError: Error | null = null;
 
@@ -236,7 +249,7 @@ async function callOpenRouter(messages: ChatMessage[]): Promise<unknown> {
           model: MODEL_NAME,
           messages,
           response_format: { type: 'json_object' },
-          max_tokens: 16000,
+          max_tokens: opts.maxTokens ?? 16000,
           temperature: 0.7,
           // Nemotron reasons heavily and can burn the whole token budget on
           // thinking, leaving nothing for the JSON output (empty/truncated
@@ -327,6 +340,120 @@ function asCappedString(value: unknown, fallback: string, maxLen: number): strin
 }
 
 /**
+ * Dietary-tag consistency — the model has tagged recipes "Dairy-Free"
+ * while listing yogurt/milk among the ingredients (Nov 2026). The prompt
+ * states the rule (DIETARY_TAG_RULE below); this is the deterministic
+ * re-check before recipes reach the client. Keywords are matched
+ * whole-word on the Unicode-aware normalized name, and exclusion
+ * phrases are stripped first ("almond milk" has no dairy, "peanut
+ * butter" is not butter) — the same trap the allergen flags guard
+ * against in src/utils/allergens.ts.
+ */
+const DAIRY_KEYWORDS = [
+  'milk', 'yogurt', 'yoghurt', 'cheese', 'butter', 'cream', 'feta',
+  'mozzarella', 'cheddar', 'parmesan', 'ghee', 'paneer', 'whey', 'kefir',
+  'curd', 'buttermilk', 'casein', 'ricotta', 'mascarpone', 'lassi', 'dahi',
+  'دودھ', 'پنیر', 'مکھن', 'کریم', 'دہی', 'گھی',
+];
+const DAIRY_EXCLUSIONS = [
+  'almond milk', 'oat milk', 'soy milk', 'coconut milk', 'cashew milk',
+  'peanut butter', 'almond butter', 'cashew butter', 'cocoa butter',
+  'shea butter',
+  'بادام کا دودھ', 'سویا دودھ', 'ناریل کا دودھ', 'کاجو کا دودھ',
+  'مونگ پھلی کا مکھن', 'بادام کا مکھن', 'کاجو کا مکھن',
+];
+const MEAT_FISH_KEYWORDS = [
+  'chicken', 'beef', 'pork', 'lamb', 'mutton', 'goat', 'veal', 'turkey',
+  'duck', 'ham', 'bacon', 'sausage', 'salami', 'pepperoni', 'fish',
+  'salmon', 'tuna', 'cod', 'trout', 'sardine', 'sardines', 'anchovy',
+  'anchovies', 'shrimp', 'prawn', 'prawns', 'crab', 'lobster', 'mussel',
+  'mussels', 'clam', 'clams', 'oyster', 'oysters', 'scallop', 'scallops',
+  'meat', 'meatballs', 'seafood',
+  'مرغی', 'چکن', 'گوشت', 'مچھلی', 'جھینگا', 'بیف',
+];
+const EGG_KEYWORDS = ['egg', 'eggs', 'انڈا', 'انڈے'];
+const HONEY_KEYWORDS = ['honey', 'شہد'];
+const GLUTEN_KEYWORDS = [
+  'wheat', 'flour', 'bread', 'pasta', 'barley', 'rye', 'semolina',
+  'couscous', 'bulgur', 'farina', 'spelt', 'noodle', 'noodles',
+  'گندم', 'آٹا', 'میدہ', 'روٹی', 'پاستا', 'سوجی', 'جو', 'رائی',
+];
+const FLOUR_EXCLUSIONS = [
+  'almond flour', 'coconut flour', 'rice flour', 'chickpea flour',
+  'oat flour',
+  'بادام کا آٹا', 'ناریل کا آٹا', 'چاول کا آٹا', 'چنے کا آٹا',
+  'جئی کا آٹا',
+];
+const KETO_KEYWORDS = [
+  'sugar', 'honey', 'rice', 'pasta', 'bread', 'potato', 'potatoes',
+  'flour', 'banana', 'bananas', 'oats', 'oatmeal', 'corn', 'noodle',
+  'noodles', 'chickpea', 'chickpeas', 'bean', 'beans', 'lentil',
+  'lentils',
+  'چینی', 'شہد', 'چاول', 'آلو', 'کیلا', 'جو', 'مکئی', 'دال',
+];
+
+const TAG_CONTRADICTIONS: Array<{
+  tag: string;
+  keywords: string[];
+  exclusions: string[];
+}> = [
+  { tag: 'Dairy-Free', keywords: DAIRY_KEYWORDS, exclusions: DAIRY_EXCLUSIONS },
+  {
+    tag: 'Vegan',
+    keywords: [...MEAT_FISH_KEYWORDS, ...EGG_KEYWORDS, ...HONEY_KEYWORDS, ...DAIRY_KEYWORDS],
+    exclusions: DAIRY_EXCLUSIONS,
+  },
+  { tag: 'Vegetarian', keywords: MEAT_FISH_KEYWORDS, exclusions: [] },
+  { tag: 'Gluten-Free', keywords: GLUTEN_KEYWORDS, exclusions: FLOUR_EXCLUSIONS },
+  { tag: 'Keto', keywords: KETO_KEYWORDS, exclusions: FLOUR_EXCLUSIONS },
+];
+
+function normalizeTagName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function nameContradictsTag(
+  name: string,
+  keywords: string[],
+  exclusions: string[],
+): boolean {
+  let normalized = normalizeTagName(name);
+  if (!normalized) return false;
+  for (const phrase of exclusions) {
+    normalized = normalized.split(phrase).join(' ');
+  }
+  const tokens = new Set(
+    normalized
+      .split(' ')
+      .filter(Boolean)
+      .flatMap((t) => [t, t.replace(/s$/, ''), t.replace(/es$/, '')]),
+  );
+  return keywords.some((k) => tokens.has(k));
+}
+
+/**
+ * Drop any dietary tag contradicted by the recipe's own ingredients.
+ * Returns the tags in their original order, minus the contradictions.
+ * Exported for tests.
+ */
+export function fixDietaryTags(
+  tags: string[],
+  ingredientNames: string[],
+): string[] {
+  return tags.filter((tag) => {
+    const rule = TAG_CONTRADICTIONS.find((r) => r.tag === tag);
+    if (!rule) return true;
+    return !ingredientNames.some((name) =>
+      nameContradictsTag(name, rule.keywords, rule.exclusions),
+    );
+  });
+}
+
+/**
  * Deep-validate AI-generated recipes. The model is not trusted: every
  * field is coerced or dropped, steps/ingredients must have the shape the
  * UI renders, and duplicate ids are made unique (React key collisions).
@@ -342,7 +469,7 @@ export function sanitizeRecipes(rawRecipes: unknown[]): Recipe[] {
           ? rawDifficulty
           : 'Easy';
       const rawTags = Array.isArray(r.dietaryTags) ? r.dietaryTags : [];
-      const dietaryTags = rawTags
+      const validTags = rawTags
         .map((t) => String(t))
         .filter((t) => VALID_DIETARY.has(t)) as Recipe['dietaryTags'];
 
@@ -361,15 +488,42 @@ export function sanitizeRecipes(rawRecipes: unknown[]): Recipe[] {
           const item = (ing || {}) as Record<string, unknown>;
           const name = asCappedString(item.name, '', 120);
           if (!name) return null;
-          return {
+          // nameEn: the English ingredient name the model returns next to
+          // an Urdu name (see URDU_RECIPE_INSTRUCTION). The client matches
+          // the fridge inventory against it — without it, Urdu recipes
+          // show "0 of N ingredients in fridge" because Urdu names never
+          // match the English fridge list. Only kept when non-empty.
+          const nameEn =
+            typeof item.nameEn === 'string' && item.nameEn.trim()
+              ? item.nameEn.trim().slice(0, 120)
+              : undefined;
+          const entry: {
+            name: string;
+            nameEn?: string;
+            amount: string;
+            essential: boolean;
+            inFridge: boolean;
+          } = {
             name,
             amount: asCappedString(item.amount, '1 unit', 80),
             essential: item.essential === true,
             inFridge: item.inFridge === true,
           };
+          if (nameEn) entry.nameEn = nameEn;
+          return entry;
         })
         .filter((x): x is NonNullable<typeof x> => x !== null)
         .slice(0, 30);
+
+      // Re-check tags against the recipe's own ingredients (both the
+      // displayed name and the English name when present) — a tag the
+      // model invented that its ingredients contradict is dropped.
+      const dietaryTags = fixDietaryTags(
+        validTags,
+        ingredients.flatMap((ing) =>
+          ing.nameEn ? [ing.name, ing.nameEn] : [ing.name],
+        ),
+      );
 
       const steps = (Array.isArray(r.steps) ? r.steps : [])
         .map((s, sIdx) => {
@@ -502,7 +656,18 @@ const URDU_RECIPE_INSTRUCTION =
   'Use Western Arabic numerals 0-9 for ALL numbers (amounts, times, calories, servings, step numbers) — never use Urdu-Indic digits (۰-۹). ' +
   'Write all quantities as numerals (2, 1.5, 1/2), never as words. ' +
   'Keep the JSON field names, the difficulty values (Easy/Medium/Hard), the dietaryTags values, and the recipe "id" exactly as specified in English. ' +
-  'Keep detectedIngredients in English.';
+  'Keep detectedIngredients in English. ' +
+  'For each ingredient in every recipe, also write its English name in the "nameEn" field (for example, if name is "ٹماٹر", nameEn is "tomato"). The app uses nameEn to check which ingredients are already in the fridge, so it must be the plain English ingredient name.';
+
+/**
+ * Dietary tags must be true for EVERY ingredient in the recipe — the
+ * model has tagged recipes "Dairy-Free" while listing yogurt/milk
+ * (Nov 2026). The server also re-checks this deterministically
+ * (fixDietaryTags in sanitizeRecipes); this line is the prompt-side
+ * half of the fix.
+ */
+const DIETARY_TAG_RULE =
+  'dietaryTags must be true for EVERY ingredient in the recipe: a recipe is Dairy-Free only if it contains no milk, yogurt, cheese, butter, cream, ghee, paneer or any other dairy; Vegan only if it contains no meat, fish, egg, dairy or honey; Vegetarian only if it contains no meat or fish; Gluten-Free only if it contains no wheat, flour, bread, pasta, barley or rye; Keto only if it contains no sugar, honey, rice, pasta, bread, potato or flour. If in doubt about a tag, leave it out.';
 
 async function runFridgeAnalysis(input: {
   imageBase64?: string;
@@ -524,6 +689,7 @@ async function runFridgeAnalysis(input: {
     '2. Suggest 5 practical, delicious recipes built primarily around these visible ingredients. Include at least 1-2 recipes that need 1-2 common missing essential items (marked inFridge: false, essential: true) so the user can add missing items to a shopping list if desired, alongside recipes ready to cook immediately.',
     '3. Write clear, scannable step-by-step instructions ideal for hands-free read-aloud cooking (include durationMinutes on active cooking/simmering/baking steps when applicable).',
     dietInstruction,
+    DIETARY_TAG_RULE,
     ...(lang === 'ur' ? [URDU_RECIPE_INSTRUCTION] : []),
     JSON_SHAPE,
   ].join('\n');
@@ -555,6 +721,31 @@ async function runFridgeAnalysis(input: {
   };
 }
 
+/**
+ * Refresh ("suggest-recipes") prompt — deliberately lighter than the
+ * fresh-scan prompt: fewer recipes, compact steps, smaller token budget
+ * (REFRESH_RECIPE_COUNT / REFRESH_MAX_TOKENS). Exported for tests.
+ */
+export function buildRefreshPrompt(
+  ingredients: string[],
+  dietary: string[],
+  lang: 'en' | 'ur',
+): string {
+  const dietInstruction =
+    dietary.length > 0
+      ? `Focus on recipes matching: ${dietary.join(', ')}.`
+      : 'Offer a balanced variety across Vegetarian, Keto, High-Protein, and Gluten-Free options.';
+  return [
+    `Available fridge ingredients: ${ingredients.join(', ')}.`,
+    dietInstruction,
+    `Generate ${REFRESH_RECIPE_COUNT} distinct recipes using these ingredients, marking any missing essentials with inFridge: false.`,
+    'Keep each recipe compact (at most 8 steps) so the reply stays short.',
+    DIETARY_TAG_RULE,
+    ...(lang === 'ur' ? [URDU_RECIPE_INSTRUCTION] : []),
+    JSON_SHAPE,
+  ].join('\n');
+}
+
 async function runRecipeSuggestions(input: {
   ingredients?: string[];
   dietaryRestrictions?: string[];
@@ -566,23 +757,14 @@ async function runRecipeSuggestions(input: {
   }
   const dietary = sanitizeDietaryRestrictions(input.dietaryRestrictions);
   const lang = sanitizeLang(input.lang);
-  const dietInstruction =
-    dietary.length > 0
-      ? `Focus on recipes matching: ${dietary.join(', ')}.`
-      : 'Offer a balanced variety across Vegetarian, Keto, High-Protein, and Gluten-Free options.';
 
-  const prompt = [
-    `Available fridge ingredients: ${ingredients.join(', ')}.`,
-    dietInstruction,
-    'Generate 5 distinct recipes using these ingredients, marking any missing essentials with inFridge: false.',
-    ...(lang === 'ur' ? [URDU_RECIPE_INSTRUCTION] : []),
-    JSON_SHAPE,
-  ].join('\n');
-
-  const parsed = (await callOpenRouter([
-    { role: 'system', content: SYSTEM_INSTRUCTION },
-    { role: 'user', content: prompt },
-  ])) as {
+  const parsed = (await callOpenRouter(
+    [
+      { role: 'system', content: SYSTEM_INSTRUCTION },
+      { role: 'user', content: buildRefreshPrompt(ingredients, dietary, lang) },
+    ],
+    { maxTokens: REFRESH_MAX_TOKENS },
+  )) as {
     detectedIngredients?: string[];
     summary?: string;
     recipes?: unknown[];
@@ -634,6 +816,78 @@ function handleRouteError(err: unknown, res: express.Response): void {
     error: 'Something went wrong on our side. Please try again.',
     code: 'SERVER_ERROR',
   });
+}
+
+/**
+ * Admin access — the operator's account (adiltariq0327@gmail.com) is the
+ * only account that may list users or flip Pro status. The gate is the
+ * caller's Supabase JWT email compared against the ADMIN_EMAIL env var
+ * (see .env.example). The client hides the panel for everyone else, but
+ * that is UI only — these endpoints re-check the token on every call,
+ * so a forged client cannot reach them. Exported helpers are tested.
+ */
+export function getAdminEmail(env: NodeJS.ProcessEnv = process.env): string | null {
+  const value = (env.ADMIN_EMAIL || '').trim().toLowerCase();
+  return value || null;
+}
+
+export function isAdminEmail(email: string | undefined, adminEmail: string | null): boolean {
+  if (!email || !adminEmail) return false;
+  return email.trim().toLowerCase() === adminEmail;
+}
+
+export interface AdminUserRow {
+  id: string;
+  email: string;
+  is_pro: boolean;
+  created_at: string;
+}
+
+export async function listAdminUsers(
+  client: SupabaseClient,
+): Promise<AdminUserRow[]> {
+  const { data, error } = await client
+    .from('profiles')
+    .select('id, email, is_pro, created_at')
+    .order('created_at', { ascending: false });
+  if (error || !Array.isArray(data)) {
+    throw new ApiError(500, 'SERVER_ERROR', 'Could not load users.');
+  }
+  return (data as Array<Record<string, unknown>>).map((row) => ({
+    id: String(row.id ?? ''),
+    email: String(row.email ?? ''),
+    is_pro: row.is_pro === true,
+    created_at: String(row.created_at ?? ''),
+  }));
+}
+
+export async function setUserPro(
+  client: SupabaseClient,
+  userId: string,
+  isPro: boolean,
+): Promise<AdminUserRow> {
+  if (typeof userId !== 'string' || userId.trim().length === 0 || userId.length > 100) {
+    throw new ApiError(400, 'VALIDATION', 'A valid user id is required.');
+  }
+  if (typeof isPro !== 'boolean') {
+    throw new ApiError(400, 'VALIDATION', 'isPro must be true or false.');
+  }
+  const { data, error } = await client
+    .from('profiles')
+    .update({ is_pro: isPro })
+    .eq('id', userId.trim())
+    .select('id, email, is_pro, created_at')
+    .single();
+  if (error || !data || typeof data !== 'object') {
+    throw new ApiError(404, 'VALIDATION', 'That user was not found.');
+  }
+  const row = data as Record<string, unknown>;
+  return {
+    id: String(row.id ?? ''),
+    email: String(row.email ?? ''),
+    is_pro: row.is_pro === true,
+    created_at: String(row.created_at ?? ''),
+  };
 }
 
 export async function createApp() {
@@ -706,6 +960,67 @@ export async function createApp() {
       return;
     }
     res.json({ user });
+  });
+
+  // Admin endpoints — the operator's account only. The caller's Supabase
+  // JWT email must match ADMIN_EMAIL; a missing or mismatched token is
+  // rejected before any database access. The admin panel in the sidebar
+  // is hidden for non-admins, but these routes are the real gate.
+  async function requireAdmin(
+    req: express.Request,
+    res: express.Response,
+  ): Promise<boolean> {
+    const header = req.headers.authorization || '';
+    const token = header.startsWith('Bearer ') ? header.slice('Bearer '.length) : '';
+    const user = token ? await verifyUserToken(token) : null;
+    if (!user) {
+      res.status(401).json({ error: 'Sign in to continue.', code: 'UNAUTHENTICATED' });
+      return false;
+    }
+    if (!isAdminEmail(user.email, getAdminEmail())) {
+      res.status(403).json({
+        error: 'Admin access is not available for this account.',
+        code: 'FORBIDDEN',
+      });
+      return false;
+    }
+    return true;
+  }
+
+  app.get('/api/admin/users', async (req, res) => {
+    try {
+      if (!(await requireAdmin(req, res))) return;
+      const admin = getSupabaseAdmin();
+      if (!admin) {
+        res.status(503).json({
+          error: 'Admin access is not configured on the server.',
+          code: 'ADMIN_NOT_CONFIGURED',
+        });
+        return;
+      }
+      res.json({ users: await listAdminUsers(admin) });
+    } catch (err) {
+      handleRouteError(err, res);
+    }
+  });
+
+  app.post('/api/admin/set-pro', async (req, res) => {
+    try {
+      if (!(await requireAdmin(req, res))) return;
+      const admin = getSupabaseAdmin();
+      if (!admin) {
+        res.status(503).json({
+          error: 'Admin access is not configured on the server.',
+          code: 'ADMIN_NOT_CONFIGURED',
+        });
+        return;
+      }
+      const body = (req.body || {}) as { userId?: unknown; isPro?: unknown };
+      const updated = await setUserPro(admin, String(body.userId ?? ''), body.isPro as boolean);
+      res.json({ user: updated });
+    } catch (err) {
+      handleRouteError(err, res);
+    }
   });
 
   app.get('/api/jobs/:id', async (req, res) => {

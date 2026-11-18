@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import { Camera, ImageUp, Loader2, Sparkles, X } from 'lucide-react';
 import type { UiStrings } from '../utils/i18n.ts';
-import { getStrings } from '../utils/i18n.ts';
+import { fmt, getStrings } from '../utils/i18n.ts';
 
 export type ScanStage =
   | 'idle'
@@ -32,6 +32,10 @@ interface FridgeScannerPanelProps {
   isAnalyzing: boolean;
   scanStage: ScanStage;
   scanElapsedSeconds: number;
+  /** Which background-job poll the client is on (polling stage only). */
+  pollAttempt?: number;
+  /** Total polls before the client gives up (polling stage only). */
+  pollMaxAttempts?: number;
   errorMessage: string | null;
   isDemo: boolean;
   onDismissError: () => void;
@@ -57,6 +61,8 @@ export function FridgeScannerPanel({
   onClearScan,
   onShowLegal,
   fileInputRef,
+  pollAttempt = 0,
+  pollMaxAttempts = 90,
   s = getStrings('en'),
 }: FridgeScannerPanelProps) {
   const [isDragging, setIsDragging] = useState(false);
@@ -317,6 +323,14 @@ export function FridgeScannerPanel({
               <p className="mt-1 text-xs text-emerald-800">
                 {s.scanTakesAboutAMinute}
               </p>
+              {scanStage === 'polling' && pollAttempt > 0 ? (
+                <p className="mt-1 text-xs text-emerald-800">
+                  {fmt(s.pollCheckLine, {
+                    attempt: String(pollAttempt),
+                    max: String(pollMaxAttempts),
+                  })}
+                </p>
+              ) : null}
             </div>
           ) : null}
 

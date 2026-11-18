@@ -67,7 +67,11 @@ export function recalculateRecipeAvailability(
     ...recipe,
     ingredients: recipe.ingredients.map((ing) => ({
       ...ing,
-      inFridge: isIngredientInFridge(ing.name, fridgeIngredients),
+      // Match on the English name when the recipe carries one (nameEn —
+      // the model returns it next to Urdu ingredient names). Urdu names
+      // alone never match the English fridge list, which is why Urdu
+      // recipes used to show "0 of N ingredients in fridge".
+      inFridge: isIngredientInFridge(ing.nameEn ?? ing.name, fridgeIngredients),
     })),
   }));
 }
