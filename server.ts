@@ -230,7 +230,7 @@ async function callOpenRouter(messages: ChatMessage[]): Promise<unknown> {
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
           'HTTP-Referer': process.env.APP_URL || 'http://localhost:3000',
-          'X-Title': 'Mise',
+          'X-Title': 'Fridjo',
         },
         body: JSON.stringify({
           model: MODEL_NAME,
@@ -485,7 +485,7 @@ export function validateImageInput(input: unknown, mimeHint: unknown): { base64:
 }
 
 const SYSTEM_INSTRUCTION =
-  'You are Mise, an expert culinary assistant. Accurately identify ingredients from fridge photos and craft realistic, appetizing recipes with reliable calorie estimates, prep times, and hands-free step-by-step instructions. Only use these exact dietaryTags values: Vegetarian, Vegan, Keto, Gluten-Free, Dairy-Free, High-Protein.';
+  'You are Fridjo, an expert culinary assistant. Accurately identify ingredients from fridge photos and craft realistic, appetizing recipes with reliable calorie estimates, prep times, and hands-free step-by-step instructions. Only use these exact dietaryTags values: Vegetarian, Vegan, Keto, Gluten-Free, Dairy-Free, High-Protein.';
 
 /**
  * Added to the recipe prompt when the UI language is Urdu. The recipe
@@ -801,7 +801,7 @@ export async function createApp() {
 async function startServer() {
   const app = await createApp();
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Mise server listening on http://0.0.0.0:${PORT}`);
+    console.log(`Fridjo server listening on http://0.0.0.0:${PORT}`);
   });
 }
 

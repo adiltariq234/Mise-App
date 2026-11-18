@@ -342,7 +342,7 @@ export function FridgeScannerPanel({
 
           <p className="mt-4 text-xs leading-relaxed text-slate-500">
             Your photo is sent to OpenRouter and its AI model provider to
-            detect ingredients. Photos are not stored on Mise&apos;s server.
+            detect ingredients. Photos are not stored on Fridjo&apos;s server.
             JPG, PNG, and WebP supported (HEIC photos need to be exported as
             JPG first).{' '}
             <button

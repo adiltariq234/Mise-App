@@ -1,5 +1,5 @@
 /**
- * Mise service worker — offline app shell only.
+ * Fridjo service worker — offline app shell only.
  *
  * - Precaches the shell (/, logo, icons, manifest) so the app opens offline.
  * - Navigations are network-first with the cached shell as the offline
@@ -12,7 +12,7 @@
  * Bump CACHE_NAME when the shell changes so old caches are dropped.
  */
 
-const CACHE_NAME = 'mise-shell-v1';
+const CACHE_NAME = 'fridjo-shell-v1';
 const SHELL = [
   '/',
   '/mise-logo.png',

@@ -52,7 +52,7 @@ export function ShoppingListView({
   };
 
   const handleCopy = async () => {
-    const lines: string[] = ['Mise — Shopping List', ''];
+    const lines: string[] = ['Fridjo — Shopping List', ''];
     for (const cat of FRIDGE_CATEGORIES) {
       const group = items.filter((i) => (i.category || 'Other') === cat);
       if (group.length === 0) continue;

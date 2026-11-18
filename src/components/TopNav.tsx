@@ -37,10 +37,10 @@ export function TopNav({
         >
           <img
             src="/mise-logo.png"
-            alt="Mise logo"
+            alt="Fridjo logo"
             className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg object-cover"
           />
-          Mise
+          Fridjo
         </a>
 
         {/* Zone 2: Single-Line Navigation Links.

@@ -1,5 +1,5 @@
 {
-  "name": "Mise",
+  "name": "Fridjo",
   "description": "Smart fridge scanner and hands-free culinary assistant with dietary filters, step-by-step read-aloud cooking mode, and one-click shopping list.",
   "requestFramePermissions": [
     "camera"

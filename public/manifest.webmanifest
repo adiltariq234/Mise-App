@@ -17,10 +17,10 @@
     }
   ],
   "id": "/",
-  "name": "Mise — Smart Fridge & Culinary Assistant",
+  "name": "Fridjo — Smart Fridge & Culinary Assistant",
   "orientation": "portrait-primary",
   "scope": "/",
-  "short_name": "Mise",
+  "short_name": "Fridjo",
   "start_url": "/",
   "theme_color": "#047857"
 }

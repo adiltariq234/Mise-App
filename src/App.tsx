@@ -77,7 +77,7 @@ const DEFAULT_FILTERS: FilterState = {
 };
 
 const DEMO_SUMMARY =
-  'This is a sample fridge — upload a photo of your own fridge and Mise will detect what is inside and suggest recipes you can cook tonight.';
+  'This is a sample fridge — upload a photo of your own fridge and Fridjo will detect what is inside and suggest recipes you can cook tonight.';
 
 const MAX_SCAN_HISTORY = 5;
 const SYNC_TIMEOUT_MS = 150_000;
@@ -1270,7 +1270,7 @@ export default function App() {
           {/* Footer — legal links */}
           <footer className="mt-12 border-t border-slate-200 pt-6 pb-4 text-center text-xs text-slate-500">
             <p>
-              Mise — Smart Fridge &amp; Culinary Assistant. Photos are sent
+              Fridjo — Smart Fridge &amp; Culinary Assistant. Photos are sent
               to OpenRouter and its AI model provider to detect ingredients.
             </p>
             <p className="mt-1.5">
